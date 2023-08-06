@@ -1,0 +1,34 @@
+---
+name: CI
+
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: eifinger/setup-rye@v1
+        with:
+          enable-cache: true
+      - name: Pin python-version ${{ matrix.python-version }}
+        run: rye pin ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          rye sync --no-lock
+      - name: Lint
+        run: |
+          SKIP=no-commit-to-branch rye run pre-commit run --all-files
+      - name: Lint GitHub Actions
+        uses: eifinger/actionlint-action@v1
