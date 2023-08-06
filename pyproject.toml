@@ -38,3 +38,7 @@ allow-direct-references = true
 
 [tool.pytest.ini_options]
 addopts = "--cov --cov-report term-missing --cov=src/pywaze --asyncio-mode=auto"
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
