@@ -259,6 +259,10 @@ class WazeRouteCalculator:
         """Close the client."""
         await self.client.aclose()
 
+    async def __aenter__(self):
+        """Support asynchronous context manager protocol."""
+        return self
+
     async def __aexit__(self, exc_type, exc, tb):
         """Close the client."""
         await self.close()
