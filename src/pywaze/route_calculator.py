@@ -1,4 +1,4 @@
-"""Waze route calculator"""
+"""Waze route calculator."""
 
 from typing import Any
 import httpx
@@ -6,15 +6,11 @@ import re
 
 
 class WRCError(Exception):
-    def __init__(self, message):
-        self.message = message
-
-    def __str__(self):
-        return self.message
+    """Waze Route Calculator Error."""
 
 
 class WazeRouteCalculator:
-    """Calculate actual route time and distance with Waze API"""
+    """Calculate actual route time and distance with Waze API."""
 
     WAZE_URL = "https://www.waze.com/"
     HEADERS = {
@@ -68,12 +64,12 @@ class WazeRouteCalculator:
         self.client = httpx.AsyncClient()
 
     def already_coords(self, address: str) -> bool:
-        """test used to see if we have coordinates or address"""
+        """Already coordinates or address."""
 
         m = re.search(self.COORD_MATCH, address)
         return m is not None
 
-    async def ensure_coords(self, address: str) -> dict[str, Any]:
+    async def _ensure_coords(self, address: str) -> dict[str, Any]:
         coords = {}
         if self.already_coords(address):
             coords = self.coords_string_parser(address)
@@ -82,13 +78,13 @@ class WazeRouteCalculator:
         return coords
 
     def coords_string_parser(self, coords: str) -> dict[str, Any]:
-        """Parses the address string into coordinates to match address_to_coords return object"""
+        """Parse the address string into coordinates to match address_to_coords return object."""
 
         lat, lon = coords.split(",")
         return {"lat": lat.strip(), "lon": lon.strip(), "bounds": {}}
 
     async def address_to_coords(self, address: str) -> dict[str, Any]:
-        """Convert address to coordinates"""
+        """Convert address to coordinates."""
 
         base_coords = self.BASE_COORDS[self.region]
         get_cord = self.COORD_SERVERS[self.region]
@@ -123,13 +119,13 @@ class WazeRouteCalculator:
     async def get_route(
         self, start: dict[str, Any], end: dict[str, Any], npaths=1, time_delta=0
     ) -> dict[str, Any] | list[dict[str, Any]]:
-        """Get route data from waze"""
+        """Get route data from waze."""
 
         routing_server = self.ROUTING_SERVERS[self.region]
 
         url_options = {
-            "from": "x:%s y:%s" % (start["lon"], start["lat"]),
-            "to": "x:%s y:%s" % (end["lon"], end["lat"]),
+            "from": f"x:{start['lon']} y:{start['lat']}",
+            "to": f"x:{end['lon']} y:{end['lat']}",
             "at": time_delta,
             "returnJSON": "true",
             "returnGeometries": "true",
@@ -137,7 +133,7 @@ class WazeRouteCalculator:
             "timeout": 60000,
             "nPaths": npaths,
             "options": ",".join(
-                "%s:%s" % (opt, value) for (opt, value) in self.ROUTE_OPTIONS.items()
+                f"{opt}:{value}" for (opt, value) in self.ROUTE_OPTIONS.items()
             ),
         }
         if self.vehicle_type:
@@ -218,8 +214,8 @@ class WazeRouteCalculator:
     ):
         """Calculate best route info."""
 
-        start = await self.ensure_coords(start)
-        end = await self.ensure_coords(end)
+        start = await self._ensure_coords(start)
+        end = await self._ensure_coords(end)
 
         route = await self.get_route(start, end, time_delta=time_delta)
         results = route["results" if "results" in route else "result"]
@@ -237,16 +233,15 @@ class WazeRouteCalculator:
     ):
         """Calculate all route infos."""
 
-        start = await self.ensure_coords(start)
-        end = await self.ensure_coords(end)
+        start = await self._ensure_coords(start)
+        end = await self._ensure_coords(end)
 
         routes = await self.get_route(start, end, npaths, time_delta)
         try:
             results = {
-                "%s-%s"
-                % (
+                "{}-{}".format(
                     "".join(route.get("routeType", [])[:1]),
-                    route.get("shortRouteName", "unkown"),
+                    route.get("shortRouteName", "unknown"),
                 ): self._add_up_route(
                     route["results" if "results" in route else "result"],
                     start["bounds"],
@@ -261,10 +256,9 @@ class WazeRouteCalculator:
         return results
 
     async def close(self):
+        """Close the client."""
         await self.client.aclose()
 
-    async def __aenter__(self):
-        return self
-
     async def __aexit__(self, exc_type, exc, tb):
+        """Close the client."""
         await self.close()
