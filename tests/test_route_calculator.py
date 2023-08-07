@@ -40,10 +40,10 @@ async def test_calc_route_info(
 ):
     """Test calc_route_info."""
 
-    rc = route_calculator.WazeRouteCalculator()
-    route_time, route_distance = await rc.calc_route_info(start, end)
-    assert route_time == expected_route_time
-    assert route_distance == expected_route_distance
+    async with route_calculator.WazeRouteCalculator() as client:
+        route_time, route_distance = await client.calc_route_info(start, end)
+        assert route_time == expected_route_time
+        assert route_distance == expected_route_distance
 
 
 @pytest.mark.parametrize(
@@ -79,8 +79,8 @@ async def test_calc_all_routes_info(
 ):
     """Test calc_all_routes_info."""
 
-    rc = route_calculator.WazeRouteCalculator()
-    results = await rc.calc_all_routes_info(start, end)
-    route_time, route_distance = list(results.values())[0]
-    assert route_time == expected_route_time
-    assert route_distance == expected_route_distance
+    async with route_calculator.WazeRouteCalculator() as client:
+        results = await client.calc_all_routes_info(start, end)
+        route_time, route_distance = list(results.values())[0]
+        assert route_time == expected_route_time
+        assert route_distance == expected_route_distance
