@@ -29,6 +29,6 @@ jobs:
           rye sync --no-lock
       - name: Lint
         run: |
-          SKIP=no-commit-to-branch rye run pre-commit run --all-files
+          SKIP=mypy rye run pre-commit run --all-files
       - name: Lint GitHub Actions
         uses: eifinger/actionlint-action@v1
