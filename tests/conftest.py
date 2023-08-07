@@ -13,6 +13,7 @@ from tests.const import (
 
 @pytest.fixture
 def get_route_mock(get_route_response: dict[str, Any], respx_mock: MockRouter):
+    """Return the provided json response when calculating routes."""
     yield respx_mock.get("https://www.waze.com/row-RoutingManager/routingRequest").mock(
         return_value=Response(
             200,
@@ -23,6 +24,7 @@ def get_route_mock(get_route_response: dict[str, Any], respx_mock: MockRouter):
 
 @pytest.fixture()
 def wiesbaden_to_coords_mock(respx_mock: MockRouter):
+    """Return the provided json response when converting this address to coordinates."""
     yield respx_mock.route(
         path="/row-SearchServer/mozi",
         params={"q": "Luisenstraße 30 65185 Wiesbaden, Germany"},
@@ -36,6 +38,7 @@ def wiesbaden_to_coords_mock(respx_mock: MockRouter):
 
 @pytest.fixture()
 def mainz_to_coords_mock(respx_mock: MockRouter):
+    """Return the provided json response when converting this address to coordinates."""
     yield respx_mock.route(
         path="/row-SearchServer/mozi",
         params={"q": "Kaiserstraße 30 55116 Mainz, Germany"},

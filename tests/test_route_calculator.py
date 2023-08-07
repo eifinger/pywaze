@@ -1,3 +1,4 @@
+"""Tests for route_calculator module."""
 import pytest
 from pywaze import route_calculator
 from tests.const import (
@@ -37,7 +38,7 @@ from tests.const import (
 async def test_calc_route_info(
     start: str, end: str, expected_route_time: float, expected_route_distance: float
 ):
-    """Test calc_route_info"""
+    """Test calc_route_info."""
 
     rc = route_calculator.WazeRouteCalculator()
     route_time, route_distance = await rc.calc_route_info(start, end)
@@ -76,7 +77,7 @@ async def test_calc_route_info(
 async def test_calc_all_routes_info(
     start: str, end: str, expected_route_time: float, expected_route_distance: float
 ):
-    """Test calc_route_info"""
+    """Test calc_all_routes_info."""
 
     rc = route_calculator.WazeRouteCalculator()
     results = await rc.calc_all_routes_info(start, end)
