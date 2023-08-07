@@ -5,6 +5,8 @@ description = "Asynchronous Waze client for calculating routes and travel times.
 authors = [
     { name = "Kevin Stillhammer", email = "kevin.stillhammer@gmail.com" }
 ]
+license = "MIT"
+repository = "http://github.com/eifinger/pywaze"
 dependencies = [
     "httpx>=0.24.1",
 ]
