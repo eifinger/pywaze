@@ -1,6 +1,6 @@
 [project]
 name = "pywaze"
-version = "0.1.0"
+version = "1.0+versionplaceholder.1"
 description = "Asynchronous Waze client for calculating routes and travel times."
 authors = [
     { name = "Kevin Stillhammer", email = "kevin.stillhammer@gmail.com" }
