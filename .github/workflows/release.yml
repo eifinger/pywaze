@@ -30,4 +30,4 @@ jobs:
         run: |
           rye build
       - name: Publish package distributions to PyPI
-        uses: trail-of-forks/gh-action-pypi-publish@ww/render-claims
+        uses: pypa/gh-action-pypi-publish@f8c70e705ffc13c3b4d1221169b84f12a75d6ca8
