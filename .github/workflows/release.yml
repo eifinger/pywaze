@@ -10,7 +10,7 @@ jobs:
   release_to_pypi:
     name: Release to PyPI
     runs-on: ubuntu-latest
-    environment: 
+    environment:
       name: pypi
       url: https://pypi.org/p/pywaze/
     permissions:
@@ -30,4 +30,4 @@ jobs:
         run: |
           rye build
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: trail-of-forks/gh-action-pypi-publish@ww/render-claims
