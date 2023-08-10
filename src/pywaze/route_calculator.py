@@ -1,6 +1,6 @@
 """Waze route calculator."""
 
-from typing import Any
+from typing import Any, Literal
 import httpx
 import re
 
@@ -17,7 +17,6 @@ class WazeRouteCalculator:
         "User-Agent": "pywaze",
         "referer": WAZE_URL,
     }
-    VEHICLE_TYPES = ("TAXI", "MOTORCYCLE")
     BASE_COORDS = {
         "US": {"lat": 40.713, "lon": -74.006},
         "NA": {"lat": 40.713, "lon": -74.006},
@@ -46,21 +45,8 @@ class WazeRouteCalculator:
     def __init__(
         self,
         region="EU",
-        vehicle_type="",
-        avoid_toll_roads=False,
-        avoid_subscription_roads=False,
-        avoid_ferries=False,
     ):
         self.region = region
-        self.vehicle_type = ""
-        if vehicle_type and vehicle_type in self.VEHICLE_TYPES:
-            self.vehicle_type = vehicle_type.upper()
-        self.ROUTE_OPTIONS = {
-            "AVOID_TRAILS": "t",
-            "AVOID_TOLL_ROADS": "t" if avoid_toll_roads else "f",
-            "AVOID_FERRIES": "t" if avoid_ferries else "f",
-        }
-        self.avoid_subscription_roads = avoid_subscription_roads
         self.client = httpx.AsyncClient()
 
     def already_coords(self, address: str) -> bool:
@@ -117,11 +103,25 @@ class WazeRouteCalculator:
         raise WRCError("Cannot get coords for %s" % address)
 
     async def get_route(
-        self, start: dict[str, Any], end: dict[str, Any], npaths=1, time_delta=0
+        self,
+        start: dict[str, Any],
+        end: dict[str, Any],
+        vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
+        avoid_toll_roads: bool = False,
+        avoid_subscription_roads: bool = False,
+        avoid_ferries: bool = False,
+        npaths: int = 1,
+        time_delta: int = 0,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Get route data from waze."""
 
         routing_server = self.ROUTING_SERVERS[self.region]
+
+        route_options = {
+            "AVOID_TRAILS": "t",
+            "AVOID_TOLL_ROADS": "t" if avoid_toll_roads else "f",
+            "AVOID_FERRIES": "t" if avoid_ferries else "f",
+        }
 
         url_options = {
             "from": f"x:{start['lon']} y:{start['lat']}",
@@ -133,13 +133,13 @@ class WazeRouteCalculator:
             "timeout": 60000,
             "nPaths": npaths,
             "options": ",".join(
-                f"{opt}:{value}" for (opt, value) in self.ROUTE_OPTIONS.items()
+                f"{opt}:{value}" for (opt, value) in route_options.items()
             ),
         }
-        if self.vehicle_type:
-            url_options["vehicleType"] = self.vehicle_type
+        if vehicle_type:
+            url_options["vehicleType"] = vehicle_type.upper()
         # Handle vignette system in Europe. Defaults to false (show all routes)
-        if self.avoid_subscription_roads is False:
+        if avoid_subscription_roads is False:
             url_options["subscription"] = "*"
 
         response: httpx.Response = await self.client.get(
@@ -210,14 +210,33 @@ class WazeRouteCalculator:
         return route_time, route_distance
 
     async def calc_route_info(
-        self, start, end, real_time=True, stop_at_bounds=False, time_delta=0
+        self,
+        start: dict[str, Any],
+        end: dict[str, Any],
+        vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
+        avoid_toll_roads: bool = False,
+        avoid_subscription_roads: bool = False,
+        avoid_ferries: bool = False,
+        npaths: int = 1,
+        time_delta: int = 0,
+        real_time: bool = True,
+        stop_at_bounds: bool = False,
     ):
         """Calculate best route info."""
 
         start = await self._ensure_coords(start)
         end = await self._ensure_coords(end)
 
-        route = await self.get_route(start, end, time_delta=time_delta)
+        route = await self.get_route(
+            start,
+            end,
+            vehicle_type=vehicle_type,
+            avoid_toll_roads=avoid_toll_roads,
+            avoid_subscription_roads=avoid_subscription_roads,
+            avoid_ferries=avoid_ferries,
+            npaths=npaths,
+            time_delta=time_delta,
+        )
         results = route["results" if "results" in route else "result"]
         route_time, route_distance = self._add_up_route(
             results,
@@ -229,14 +248,33 @@ class WazeRouteCalculator:
         return route_time, route_distance
 
     async def calc_all_routes_info(
-        self, start, end, npaths=3, real_time=True, stop_at_bounds=False, time_delta=0
+        self,
+        start: dict[str, Any],
+        end: dict[str, Any],
+        vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
+        avoid_toll_roads: bool = False,
+        avoid_subscription_roads: bool = False,
+        avoid_ferries: bool = False,
+        npaths: int = 3,
+        time_delta: int = 0,
+        real_time=True,
+        stop_at_bounds=False,
     ):
         """Calculate all route infos."""
 
         start = await self._ensure_coords(start)
         end = await self._ensure_coords(end)
 
-        routes = await self.get_route(start, end, npaths, time_delta)
+        routes = await self.get_route(
+            start,
+            end,
+            vehicle_type=vehicle_type,
+            avoid_toll_roads=avoid_toll_roads,
+            avoid_subscription_roads=avoid_subscription_roads,
+            avoid_ferries=avoid_ferries,
+            npaths=npaths,
+            time_delta=time_delta,
+        )
         try:
             results = {
                 "{}-{}".format(
