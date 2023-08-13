@@ -1,4 +1,5 @@
 """Tests for route_calculator module."""
+import httpx
 import pytest
 from pywaze import route_calculator
 from tests.const import (
@@ -51,6 +52,7 @@ async def test_calc_route_info(
         "start",
         "end",
         "get_route_response",
+        "httpx_client",
         "expected_route_time",
         "expected_route_distance",
     ),
@@ -59,6 +61,7 @@ async def test_calc_route_info(
             "50.00332659227126,8.262322651915843",
             "50.08414976707619,8.247836017342934",
             GET_ROUTE_RESPONSE_COORDS,
+            None,
             18.4,
             12.715,
         ),
@@ -66,6 +69,7 @@ async def test_calc_route_info(
             "Kaiserstraße 30 55116 Mainz, Germany",
             "Luisenstraße 30 65185 Wiesbaden, Germany",
             GET_ROUTE_RESPONSE_ADDRESSES,
+            httpx.AsyncClient(),
             18.183333333333334,
             12.644,
         ),
@@ -75,11 +79,15 @@ async def test_calc_route_info(
     "get_route_mock", "wiesbaden_to_coords_mock", "mainz_to_coords_mock"
 )
 async def test_calc_all_routes_info(
-    start: str, end: str, expected_route_time: float, expected_route_distance: float
+    start: str,
+    end: str,
+    httpx_client: httpx.AsyncClient | None,
+    expected_route_time: float,
+    expected_route_distance: float,
 ):
     """Test calc_all_routes_info."""
 
-    async with route_calculator.WazeRouteCalculator() as client:
+    async with route_calculator.WazeRouteCalculator(client=httpx_client) as client:
         results = await client.calc_all_routes_info(start, end)
         route_time, route_distance = list(results.values())[0]
         assert route_time == expected_route_time

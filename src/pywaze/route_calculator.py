@@ -45,9 +45,12 @@ class WazeRouteCalculator:
     def __init__(
         self,
         region="EU",
+        client: httpx.AsyncClient | None = None,
     ):
         self.region = region
-        self.client = httpx.AsyncClient()
+        self.client = client
+        if self.client is None:
+            self.client = httpx.AsyncClient()
 
     def already_coords(self, address: str) -> bool:
         """Already coordinates or address."""
