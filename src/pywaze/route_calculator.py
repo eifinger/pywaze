@@ -9,6 +9,10 @@ class WRCError(Exception):
     """Waze Route Calculator Error."""
 
 
+class WRCTimeoutError(WRCError):
+    """Waze Route Calculator Timeout Error."""
+
+
 class WazeRouteCalculator:
     """Calculate actual route time and distance with Waze API."""
 
@@ -85,9 +89,12 @@ class WazeRouteCalculator:
             "lon": base_coords["lon"],
         }
 
-        response: httpx.Response = await self.client.get(
-            self.WAZE_URL + get_cord, params=url_options, headers=self.HEADERS
-        )
+        try:
+            response: httpx.Response = await self.client.get(
+                self.WAZE_URL + get_cord, params=url_options, headers=self.HEADERS
+            )
+        except httpx.TimeoutException as e:
+            raise WRCTimeoutError("Timeout getting coords for %s" % address) from e
         for response_json in response.json():
             if response_json.get("city"):
                 lat = response_json["location"]["lat"]
@@ -145,9 +152,12 @@ class WazeRouteCalculator:
         if avoid_subscription_roads is False:
             url_options["subscription"] = "*"
 
-        response: httpx.Response = await self.client.get(
-            self.WAZE_URL + routing_server, params=url_options, headers=self.HEADERS
-        )
+        try:
+            response: httpx.Response = await self.client.get(
+                self.WAZE_URL + routing_server, params=url_options, headers=self.HEADERS
+            )
+        except httpx.TimeoutException as e:
+            raise WRCTimeoutError("Timeout getting route") from e
         response_json = self._check_response(response)
         if response_json:
             if "error" in response_json:
