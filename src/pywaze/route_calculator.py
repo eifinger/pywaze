@@ -50,11 +50,13 @@ class WazeRouteCalculator:
         self,
         region="EU",
         client: httpx.AsyncClient | None = None,
+        timeout: int = 10,
     ):
         self.region = region
         self.client = client
+        self.timeout = timeout
         if self.client is None:
-            self.client = httpx.AsyncClient()
+            self.client = httpx.AsyncClient(timeout=timeout)
 
     def already_coords(self, address: str) -> bool:
         """Already coordinates or address."""
@@ -91,7 +93,10 @@ class WazeRouteCalculator:
 
         try:
             response: httpx.Response = await self.client.get(
-                self.WAZE_URL + get_cord, params=url_options, headers=self.HEADERS
+                self.WAZE_URL + get_cord,
+                params=url_options,
+                headers=self.HEADERS,
+                timeout=self.timeout,
             )
         except httpx.TimeoutException as e:
             raise WRCTimeoutError("Timeout getting coords for %s" % address) from e
@@ -154,7 +159,10 @@ class WazeRouteCalculator:
 
         try:
             response: httpx.Response = await self.client.get(
-                self.WAZE_URL + routing_server, params=url_options, headers=self.HEADERS
+                self.WAZE_URL + routing_server,
+                params=url_options,
+                headers=self.HEADERS,
+                timeout=self.timeout,
             )
         except httpx.TimeoutException as e:
             raise WRCTimeoutError("Timeout getting route") from e
