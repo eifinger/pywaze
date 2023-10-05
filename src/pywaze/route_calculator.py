@@ -50,7 +50,7 @@ class WazeRouteCalculator:
         self,
         region="EU",
         client: httpx.AsyncClient | None = None,
-        timeout: int = 10,
+        timeout: int = 60,
     ):
         self.region = region
         self.client = client
