@@ -1,8 +1,16 @@
 """Waze route calculator."""
 
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 import httpx
 import re
+
+
+class Coords(TypedDict):
+    """Coordinates and bounds."""
+
+    lat: float
+    lon: float
+    bounds: dict[str, float]
 
 
 class WRCError(Exception):
@@ -53,10 +61,8 @@ class WazeRouteCalculator:
         timeout: int = 60,
     ):
         self.region = region
-        self.client = client
+        self.client = client or httpx.AsyncClient(timeout=timeout)
         self.timeout = timeout
-        if self.client is None:
-            self.client = httpx.AsyncClient(timeout=timeout)
 
     def already_coords(self, address: str) -> bool:
         """Already coordinates or address."""
@@ -64,26 +70,26 @@ class WazeRouteCalculator:
         m = re.search(self.COORD_MATCH, address)
         return m is not None
 
-    async def _ensure_coords(self, address: str) -> dict[str, Any]:
-        coords = {}
+    async def _ensure_coords(self, address: str) -> Coords:
+        coords = None
         if self.already_coords(address):
             coords = self.coords_string_parser(address)
         else:
             coords = await self.address_to_coords(address)
         return coords
 
-    def coords_string_parser(self, coords: str) -> dict[str, Any]:
+    def coords_string_parser(self, coords: str) -> Coords:
         """Parse the address string into coordinates to match address_to_coords return object."""
 
         lat, lon = coords.split(",")
-        return {"lat": lat.strip(), "lon": lon.strip(), "bounds": {}}
+        return {"lat": float(lat.strip()), "lon": float(lon.strip()), "bounds": {}}
 
-    async def address_to_coords(self, address: str) -> dict[str, Any]:
+    async def address_to_coords(self, address: str) -> Coords:
         """Convert address to coordinates."""
 
         base_coords = self.BASE_COORDS[self.region]
         get_cord = self.COORD_SERVERS[self.region]
-        url_options = {
+        url_options: dict[str, str | float] = {
             "q": address,
             "lang": "eng",
             "origin": "livemap",
@@ -102,32 +108,36 @@ class WazeRouteCalculator:
             raise WRCTimeoutError("Timeout getting coords for %s" % address) from e
         for response_json in response.json():
             if response_json.get("city"):
-                lat = response_json["location"]["lat"]
-                lon = response_json["location"]["lon"]
-                bounds = response_json["bounds"]  # sometimes the coords don't match up
+                lat: float = response_json["location"]["lat"]
+                lon: float = response_json["location"]["lon"]
+                bounds: dict[str, float] = response_json[
+                    "bounds"
+                ]  # sometimes the coords don't match up
                 if bounds is not None:
-                    bounds["top"], bounds["bottom"] = max(
-                        bounds["top"], bounds["bottom"]
-                    ), min(bounds["top"], bounds["bottom"])
-                    bounds["left"], bounds["right"] = min(
-                        bounds["left"], bounds["right"]
-                    ), max(bounds["left"], bounds["right"])
+                    bounds["top"], bounds["bottom"] = (
+                        max(bounds["top"], bounds["bottom"]),
+                        min(bounds["top"], bounds["bottom"]),
+                    )
+                    bounds["left"], bounds["right"] = (
+                        min(bounds["left"], bounds["right"]),
+                        max(bounds["left"], bounds["right"]),
+                    )
                 else:
                     bounds = {}
                 return {"lat": lat, "lon": lon, "bounds": bounds}
         raise WRCError("Cannot get coords for %s" % address)
 
-    async def get_route(
+    async def get_routes(
         self,
-        start: dict[str, Any],
-        end: dict[str, Any],
+        start: Coords,
+        end: Coords,
         vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
         npaths: int = 1,
         time_delta: int = 0,
-    ) -> dict[str, Any] | list[dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get route data from waze."""
 
         routing_server = self.ROUTING_SERVERS[self.region]
@@ -138,7 +148,7 @@ class WazeRouteCalculator:
             "AVOID_FERRIES": "t" if avoid_ferries else "f",
         }
 
-        url_options = {
+        url_options: dict[str, str | int] = {
             "from": f"x:{start['lon']} y:{start['lat']}",
             "to": f"x:{end['lon']} y:{end['lat']}",
             "at": time_delta,
@@ -167,36 +177,37 @@ class WazeRouteCalculator:
         except httpx.TimeoutException as e:
             raise WRCTimeoutError("Timeout getting route") from e
         response_json = self._check_response(response)
-        if response_json:
-            if "error" in response_json:
-                raise WRCError(response_json.get("error"))
-            else:
-                if response_json.get("alternatives"):
-                    return [alt["response"] for alt in response_json["alternatives"]]
-                response_obj = response_json["response"]
-                if isinstance(response_obj, list):
-                    response_obj = response_obj[0]
-                if npaths > 1:
-                    return [response_obj]
-                return response_obj
-        else:
-            raise WRCError("empty response")
+        if response_json.get("alternatives"):
+            return [alt["response"] for alt in response_json["alternatives"]]
+        response_obj = response_json["response"]
+        if isinstance(response_obj, list):
+            response_obj = response_obj[0]
+        return [response_obj]
 
     @staticmethod
-    def _check_response(response: httpx.Response) -> Any | None:
+    def _check_response(response: httpx.Response) -> Any:
         """Check waze server response."""
         if response.is_success:
             try:
-                return response.json()
+                response_json = response.json()
+                if "error" in response_json:
+                    raise WRCError(response_json.get("error"))
+                return response_json
             except ValueError:
-                return None
+                raise WRCError("empty response")
+        raise WRCError(response.text)
 
     def _add_up_route(
-        self, results, start_bounds, end_bounds, real_time=True, stop_at_bounds=False
-    ):
+        self,
+        results: list[dict],
+        start_bounds: dict[str, float],
+        end_bounds: dict[str, float],
+        real_time: bool = True,
+        stop_at_bounds: bool = False,
+    ) -> tuple[float, float]:
         """Calculate route time and distance."""
 
-        def between(target, min, max):
+        def between(target: float, min: float, max: float) -> bool:
             return target > min and target < max
 
         time = 0
@@ -232,8 +243,8 @@ class WazeRouteCalculator:
 
     async def calc_route_info(
         self,
-        start: dict[str, Any],
-        end: dict[str, Any],
+        start: str,
+        end: str,
         vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
@@ -245,12 +256,12 @@ class WazeRouteCalculator:
     ):
         """Calculate best route info."""
 
-        start = await self._ensure_coords(start)
-        end = await self._ensure_coords(end)
+        start_coords = await self._ensure_coords(start)
+        end_coords = await self._ensure_coords(end)
 
-        route = await self.get_route(
-            start,
-            end,
+        routes = await self.get_routes(
+            start_coords,
+            end_coords,
             vehicle_type=vehicle_type,
             avoid_toll_roads=avoid_toll_roads,
             avoid_subscription_roads=avoid_subscription_roads,
@@ -258,11 +269,12 @@ class WazeRouteCalculator:
             npaths=npaths,
             time_delta=time_delta,
         )
+        route = routes[0]
         results = route["results" if "results" in route else "result"]
         route_time, route_distance = self._add_up_route(
             results,
-            start["bounds"],
-            end["bounds"],
+            start_coords["bounds"],
+            end_coords["bounds"],
             real_time=real_time,
             stop_at_bounds=stop_at_bounds,
         )
@@ -270,25 +282,25 @@ class WazeRouteCalculator:
 
     async def calc_all_routes_info(
         self,
-        start: dict[str, Any],
-        end: dict[str, Any],
+        start: str,
+        end: str,
         vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
         npaths: int = 3,
         time_delta: int = 0,
-        real_time=True,
-        stop_at_bounds=False,
+        real_time: bool = True,
+        stop_at_bounds: bool = False,
     ):
         """Calculate all route infos."""
 
-        start = await self._ensure_coords(start)
-        end = await self._ensure_coords(end)
+        start_coords = await self._ensure_coords(start)
+        end_coords = await self._ensure_coords(end)
 
-        routes = await self.get_route(
-            start,
-            end,
+        routes = await self.get_routes(
+            start_coords,
+            end_coords,
             vehicle_type=vehicle_type,
             avoid_toll_roads=avoid_toll_roads,
             avoid_subscription_roads=avoid_subscription_roads,
@@ -303,8 +315,8 @@ class WazeRouteCalculator:
                     route.get("shortRouteName", "unknown"),
                 ): self._add_up_route(
                     route["results" if "results" in route else "result"],
-                    start["bounds"],
-                    end["bounds"],
+                    start_coords["bounds"],
+                    end_coords["bounds"],
                     real_time=real_time,
                     stop_at_bounds=stop_at_bounds,
                 )
@@ -314,7 +326,7 @@ class WazeRouteCalculator:
             raise WRCError("wrong response") from e
         return results
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the client."""
         await self.client.aclose()
 

@@ -27,8 +27,13 @@ jobs:
       - name: Install dependencies
         run: |
           rye sync --no-lock
+      - name: Cache pre-commit
+        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84  # v3.3.2
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-|${{ matrix.python-version }}|${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Lint
         run: |
-          SKIP=mypy rye run pre-commit run --all-files
+          rye run pre-commit run --all-files
       - name: Lint GitHub Actions
         uses: eifinger/actionlint-action@v1
