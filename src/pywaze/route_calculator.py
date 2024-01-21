@@ -1,5 +1,6 @@
 """Waze route calculator."""
 
+from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 import httpx
 import re
@@ -11,6 +12,16 @@ class Coords(TypedDict):
     lat: float
     lon: float
     bounds: dict[str, float]
+
+
+@dataclass(frozen=True)
+class CalcRoutesResponse:
+    """The Response from this lib."""
+
+    duration: float
+    distance: float
+    name: str
+    street_names: list[str]
 
 
 class WRCError(Exception):
@@ -135,7 +146,7 @@ class WazeRouteCalculator:
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
-        npaths: int = 1,
+        alternatives: int = 1,
         time_delta: int = 0,
     ) -> list[dict[str, Any]]:
         """Get route data from waze."""
@@ -156,7 +167,7 @@ class WazeRouteCalculator:
             "returnGeometries": "true",
             "returnInstructions": "true",
             "timeout": 60000,
-            "nPaths": npaths,
+            "nPaths": alternatives,
             "options": ",".join(
                 f"{opt}:{value}" for (opt, value) in route_options.items()
             ),
@@ -241,7 +252,7 @@ class WazeRouteCalculator:
         route_distance = distance / 1000.0
         return route_time, route_distance
 
-    async def calc_route_info(
+    async def calc_routes(
         self,
         start: str,
         end: str,
@@ -249,12 +260,12 @@ class WazeRouteCalculator:
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
-        npaths: int = 1,
+        alternatives: int = 1,
         time_delta: int = 0,
         real_time: bool = True,
         stop_at_bounds: bool = False,
-    ):
-        """Calculate best route info."""
+    ) -> list[CalcRoutesResponse]:
+        """Get route info with enhanced calculations like total distance."""
 
         start_coords = await self._ensure_coords(start)
         end_coords = await self._ensure_coords(end)
@@ -266,65 +277,30 @@ class WazeRouteCalculator:
             avoid_toll_roads=avoid_toll_roads,
             avoid_subscription_roads=avoid_subscription_roads,
             avoid_ferries=avoid_ferries,
-            npaths=npaths,
+            alternatives=alternatives,
             time_delta=time_delta,
         )
-        route = routes[0]
-        results = route["results" if "results" in route else "result"]
-        route_time, route_distance = self._add_up_route(
-            results,
-            start_coords["bounds"],
-            end_coords["bounds"],
-            real_time=real_time,
-            stop_at_bounds=stop_at_bounds,
-        )
-        return route_time, route_distance
-
-    async def calc_all_routes_info(
-        self,
-        start: str,
-        end: str,
-        vehicle_type: Literal[None, "TAXI", "MOTORCYCLE"] = None,
-        avoid_toll_roads: bool = False,
-        avoid_subscription_roads: bool = False,
-        avoid_ferries: bool = False,
-        npaths: int = 3,
-        time_delta: int = 0,
-        real_time: bool = True,
-        stop_at_bounds: bool = False,
-    ):
-        """Calculate all route infos."""
-
-        start_coords = await self._ensure_coords(start)
-        end_coords = await self._ensure_coords(end)
-
-        routes = await self.get_routes(
-            start_coords,
-            end_coords,
-            vehicle_type=vehicle_type,
-            avoid_toll_roads=avoid_toll_roads,
-            avoid_subscription_roads=avoid_subscription_roads,
-            avoid_ferries=avoid_ferries,
-            npaths=npaths,
-            time_delta=time_delta,
-        )
-        try:
-            results = {
-                "{}-{}".format(
-                    "".join(route.get("routeType", [])[:1]),
-                    route.get("shortRouteName", "unknown"),
-                ): self._add_up_route(
-                    route["results" if "results" in route else "result"],
-                    start_coords["bounds"],
-                    end_coords["bounds"],
-                    real_time=real_time,
-                    stop_at_bounds=stop_at_bounds,
+        result = []
+        for route in routes:
+            results = route["results" if "results" in route else "result"]
+            duration, distance = self._add_up_route(
+                results,
+                start_coords["bounds"],
+                end_coords["bounds"],
+                real_time=real_time,
+                stop_at_bounds=stop_at_bounds,
+            )
+            result.append(
+                CalcRoutesResponse(
+                    distance=distance,
+                    duration=duration,
+                    name=route["routeName"],
+                    street_names=[
+                        name for name in route["streetNames"] if name is not None
+                    ],
                 )
-                for route in routes
-            }
-        except KeyError as e:
-            raise WRCError("wrong response") from e
-        return results
+            )
+        return result
 
     async def close(self) -> None:
         """Close the client."""
