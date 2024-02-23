@@ -20,15 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: eifinger/setup-rye@v1
+        id: setup-rye
         with:
           enable-cache: true
+          cache-prefix: ${{ matrix.python-version }}
       - name: Pin python-version ${{ matrix.python-version }}
+        if: steps.setup-rye.outputs.cache-hit != 'true'
         run: rye pin ${{ matrix.python-version }}
       - name: Install dependencies
+        if: steps.setup-rye.outputs.cache-hit != 'true'
         run: |
           rye sync --no-lock
       - name: Cache pre-commit
-        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84  # v3.3.2
+        uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2  # v4.0.0
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-|${{ matrix.python-version }}|${{ hashFiles('.pre-commit-config.yaml') }}
