@@ -23,7 +23,7 @@ jobs:
           sed -i "s/1\.0+versionplaceholder\.1/$VERSION/" pyproject.toml
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
-      - uses: eifinger/setup-rye@v1
+      - uses: eifinger/setup-rye@v2
         with:
           enable-cache: true
       - name: Build
