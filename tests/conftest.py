@@ -57,3 +57,14 @@ def mainz_to_coords_mock(respx_mock: MockRouter):
             json=ADDRESS_TO_COORDS_RESPONSE_MAINZ,
         )
     )
+
+
+@pytest.fixture
+def no_route_name_mock(get_route_response: dict[str, Any], respx_mock: MockRouter):
+    """Return the provided json response when calculating routes."""
+    yield respx_mock.get("https://www.waze.com/row-RoutingManager/routingRequest").mock(
+        return_value=Response(
+            200,
+            json=get_route_response,
+        )
+    )

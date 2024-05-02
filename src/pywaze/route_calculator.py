@@ -294,9 +294,11 @@ class WazeRouteCalculator:
                 CalcRoutesResponse(
                     distance=distance,
                     duration=duration,
-                    name=route["routeName"],
+                    name=route.get("routeName", ""),
                     street_names=[
-                        name for name in route["streetNames"] if name is not None
+                        name
+                        for name in route.get("streetNames", {})
+                        if name is not None
                     ],
                 )
             )

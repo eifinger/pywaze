@@ -2,6 +2,7 @@
 import pytest
 from pywaze import route_calculator
 from tests.const import (
+    EMPTY_ROUTE_NAME_RESPONSE,
     GET_ROUTE_RESPONSE_ADDRESSES,
     GET_ROUTE_RESPONSE_COORDS,
     GET_ALL_ROUTES_RESPONSE,
@@ -207,6 +208,16 @@ from tests.const import (
                 ],
             ],
         ),
+        (
+            "31.804461,35.2115243",
+            "31.80459309184719,35.21160542964936",
+            1,
+            EMPTY_ROUTE_NAME_RESPONSE,
+            [0.03333333333333333],
+            [0.007],
+            [""],
+            [[]],
+        ),
     ),
 )
 @pytest.mark.usefixtures(
@@ -234,7 +245,8 @@ async def test_calc_route_info(
             )
 
 
-async def test_calc_route_info_timeout(timeout_mock):
+@pytest.mark.usefixtures("timeout_mock")
+async def test_calc_route_info_timeout():
     """Test calc_route_info with timeout."""
 
     async with route_calculator.WazeRouteCalculator() as client:
