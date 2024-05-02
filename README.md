@@ -23,7 +23,7 @@ async def get_time(start: str, end: str) -> float:
     """Return the travel time home."""
 
     async with route_calculator.WazeRouteCalculator() as client:
-        results = await client.calc_all_routes_info(start, end)
+        results = await client.calc_routes(start, end)
         route_time, _ = list(results.values())[0]
         return route_time
 
