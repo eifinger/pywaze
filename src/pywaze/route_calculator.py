@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 import httpx
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Coords(TypedDict):
@@ -201,6 +204,7 @@ class WazeRouteCalculator:
         if response.is_success:
             try:
                 response_json = response.json()
+                logger.debug("Response is: %s", response_json)
                 if "error" in response_json:
                     raise WRCError(response_json.get("error"))
                 return response_json
