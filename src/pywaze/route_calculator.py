@@ -290,16 +290,19 @@ class WazeRouteCalculator:
                 real_time=real_time,
                 stop_at_bounds=stop_at_bounds,
             )
-            result.append(
-                CalcRoutesResponse(
-                    distance=distance,
-                    duration=duration,
-                    name=route["routeName"],
-                    street_names=[
-                        name for name in route["streetNames"] if name is not None
-                    ],
+            try:
+                result.append(
+                    CalcRoutesResponse(
+                        distance=distance,
+                        duration=duration,
+                        name=route["routeName"],
+                        street_names=[
+                            name for name in route["streetNames"] if name is not None
+                        ],
+                    )
                 )
-            )
+            except KeyError:
+                pass  # TODO: should we return distance=0, duration=0, name="You're Already There!" or something?
         return result
 
     async def close(self) -> None:
