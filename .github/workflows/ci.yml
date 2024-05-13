@@ -19,7 +19,7 @@ jobs:
         python-version: ["3.11.3"]
     steps:
       - uses: actions/checkout@v4
-      - uses: eifinger/setup-rye@v2
+      - uses: eifinger/setup-rye@v3
         id: setup-rye
         with:
           enable-cache: true
