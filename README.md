@@ -7,7 +7,7 @@ Based on [WazeRouteCalculator](https://github.com/kovacsbalu/WazeRouteCalculator
 ## Installation
 
 ```console
-pip install pywaze
+uv add pywaze
 ```
 
 ## Usage

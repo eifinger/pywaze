@@ -16,20 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
-      - uses: eifinger/setup-rye@v4
-        id: setup-rye
+      - uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
         with:
-          enable-cache: true
-          cache-prefix: ${{ matrix.python-version }}
-      - name: Pin python-version ${{ matrix.python-version }}
-        run: rye pin ${{ matrix.python-version }}
-      - name: Install dependencies
-        if: steps.setup-rye.outputs.cache-hit != 'true'
-        run: |
-          rye sync --no-lock
+          python-version: ${{ matrix.python-version }}
       - name: Cache pre-commit
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9  # v4.0.2
         with:
@@ -37,6 +29,6 @@ jobs:
           key: pre-commit-|${{ matrix.python-version }}|${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Lint
         run: |
-          rye run pre-commit run --all-files
+          uv run pre-commit run --all-files
       - name: Lint GitHub Actions
         uses: eifinger/actionlint-action@v1

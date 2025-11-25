@@ -23,11 +23,8 @@ jobs:
           sed -i "s/1\.0+versionplaceholder\.1/$VERSION/" pyproject.toml
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
-      - uses: eifinger/setup-rye@v4
-        with:
-          enable-cache: true
+      - uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
       - name: Build
-        run: |
-          rye build
+        run: uv build
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@0ab0b79471669eb3a4d647e625009c62f9f3b241
+        run: uv publish
