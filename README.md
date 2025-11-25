@@ -24,8 +24,8 @@ async def get_time(start: str, end: str) -> float:
 
     async with route_calculator.WazeRouteCalculator() as client:
         results = await client.calc_routes(start, end)
-        route_time, _ = list(results.values())[0]
-        return route_time
+        first_route = results[0]
+        return first_route.duration
 
 
 start = "50.00332659227126,8.262322651915843"
