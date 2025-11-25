@@ -58,11 +58,11 @@ class WazeRouteCalculator:
         "AU": "row-SearchServer/mozi",
     }
     ROUTING_SERVERS = {
-        "US": "RoutingManager/routingRequest",
-        "NA": "RoutingManager/routingRequest",
-        "EU": "row-RoutingManager/routingRequest",
-        "IL": "il-RoutingManager/routingRequest",
-        "AU": "row-RoutingManager/routingRequest",
+        "US": "https://routing-livemap-am.waze.com/RoutingManager/routingRequest",
+        "NA": "https://routing-livemap-am.waze.com/RoutingManager/routingRequest",
+        "EU": "https://routing-livemap-row.waze.com/RoutingManager/routingRequest",
+        "IL": "https://routing-livemap-il.waze.com/RoutingManager/routingRequest",
+        "AU": "https://routing-livemap-row.waze.com/RoutingManager/routingRequest",
     }
     COORD_MATCH = re.compile(
         r"^([-+]?)([\d]{1,2})(((\.)(\d+)(,)))(\s*)(([-+]?)([\d]{1,3})((\.)(\d+))?)$"
@@ -183,7 +183,7 @@ class WazeRouteCalculator:
 
         try:
             response: httpx.Response = await self.client.get(
-                self.WAZE_URL + routing_server,
+                routing_server,
                 params=url_options,
                 headers=self.HEADERS,
                 timeout=self.timeout,

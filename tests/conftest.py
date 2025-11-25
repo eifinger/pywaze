@@ -15,7 +15,9 @@ from tests.const import (
 @pytest.fixture
 def get_route_mock(get_route_response: dict[str, Any], respx_mock: MockRouter):
     """Return the provided json response when calculating routes."""
-    yield respx_mock.get("https://www.waze.com/row-RoutingManager/routingRequest").mock(
+    yield respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).mock(
         return_value=Response(
             200,
             json=get_route_response,
@@ -26,9 +28,9 @@ def get_route_mock(get_route_response: dict[str, Any], respx_mock: MockRouter):
 @pytest.fixture
 def timeout_mock(respx_mock: MockRouter):
     """Throw a httpx.TimeoutException when calculating routes."""
-    yield respx_mock.get("https://www.waze.com/row-RoutingManager/routingRequest").mock(
-        side_effect=httpx.TimeoutException("Timeout")
-    )
+    yield respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).mock(side_effect=httpx.TimeoutException("Timeout"))
 
 
 @pytest.fixture()
@@ -62,7 +64,9 @@ def mainz_to_coords_mock(respx_mock: MockRouter):
 @pytest.fixture
 def no_route_name_mock(get_route_response: dict[str, Any], respx_mock: MockRouter):
     """Return the provided json response when calculating routes."""
-    yield respx_mock.get("https://www.waze.com/row-RoutingManager/routingRequest").mock(
+    yield respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).mock(
         return_value=Response(
             200,
             json=get_route_response,

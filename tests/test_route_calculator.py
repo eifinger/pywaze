@@ -1,4 +1,5 @@
 """Tests for route_calculator module."""
+
 import pytest
 from pywaze import route_calculator
 from tests.const import (
