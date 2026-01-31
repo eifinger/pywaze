@@ -45,6 +45,12 @@ repos:
         language: system
         types: [yaml]
         entry: uv run yamllint
+      - id: pytest
+        name: Running tests and test coverage with pytest
+        language: system
+        types: [python]
+        entry: uv run pytest
+        pass_filenames: false
 
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: "v0.10.0"
