@@ -119,7 +119,7 @@ class WazeRouteCalculator:
                 timeout=self.timeout,
             )
         except httpx.TimeoutException as e:
-            raise WRCTimeoutError("Timeout getting coords for %s" % address) from e
+            raise WRCTimeoutError(f"Timeout getting coords for {address}") from e
         for response_json in response.json():
             if response_json.get("city"):
                 lat: float = response_json["location"]["lat"]
@@ -139,7 +139,7 @@ class WazeRouteCalculator:
                 else:
                     bounds = {}
                 return {"lat": lat, "lon": lon, "bounds": bounds}
-        raise WRCError("Cannot get coords for %s" % address)
+        raise WRCError(f"Cannot get coords for {address}")
 
     async def get_routes(
         self,
