@@ -22,17 +22,29 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+  - repo: local
     hooks:
       - id: codespell
-        args:
-          - --skip=./.*,*.json
-
-  - repo: https://github.com/adrienverge/yamllint.git
-    rev: v1.35.1
-    hooks:
+        name: Check code for common misspellings
+        language: system
+        types: [text]
+        exclude: |
+          (?x)^(
+              .lock|
+              CHANGELOG.md
+          )$
+        entry: uv run codespell --ignore-words=.codespell
+      - id: mypy
+        name: Static type checking using mypy
+        language: system
+        types: [python]
+        entry: uv run mypy
+        require_serial: true
       - id: yamllint
+        name: Check YAML files with yamllint
+        language: system
+        types: [yaml]
+        entry: uv run yamllint
 
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: "v0.10.0"
