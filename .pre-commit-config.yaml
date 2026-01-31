@@ -16,16 +16,18 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.4
+    rev: v0.1.7
     hooks:
-      - id: ruff
-        args: [--fix]
       - id: ruff-format
+        name: ☕️ Format using ruff
+      - id: ruff
+        name: ✅ Lint using ruff
+        args: [--fix, --exit-non-zero-on-fix]
 
   - repo: local
     hooks:
       - id: codespell
-        name: Check code for common misspellings
+        name: ✅ Check code for common misspellings
         language: system
         types: [text]
         exclude: |
@@ -35,24 +37,25 @@ repos:
           )$
         entry: uv run codespell --ignore-words=.codespell
       - id: mypy
-        name: Static type checking using mypy
+        name: 🆎 Static type checking using mypy
         language: system
         types: [python]
         entry: uv run mypy
         require_serial: true
       - id: yamllint
-        name: Check YAML files with yamllint
+        name: 🎗  Check YAML files with yamllint
         language: system
         types: [yaml]
         entry: uv run yamllint
       - id: pytest
-        name: Running tests and test coverage with pytest
+        name: 🧪 Running tests and test coverage with pytest
         language: system
         types: [python]
         entry: uv run pytest
         pass_filenames: false
 
   - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: "v0.10.0"
+    rev: "v0.9.0"
     hooks:
       - id: shellcheck
+        name: ✅ Check Shell files
