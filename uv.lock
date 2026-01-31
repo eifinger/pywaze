@@ -373,7 +373,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23.8" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "respx", specifier = ">=0.21.1" },
-    { name = "ruff", specifier = ">=0.5.5" },
+    { name = "ruff", specifier = ">=0.9.4" },
     { name = "yamllint", specifier = ">=1.35.1" },
 ]
 
