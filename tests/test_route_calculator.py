@@ -1,8 +1,11 @@
 """Tests for route_calculator module."""
 
+from httpx import Response
 import pytest
 from pywaze import route_calculator
+from respx import MockRouter
 from tests.const import (
+    ADDRESS_TO_COORDS_RESPONSE_WIESBADEN,
     EMPTY_ROUTE_NAME_RESPONSE,
     GET_ROUTE_RESPONSE_ADDRESSES,
     GET_ROUTE_RESPONSE_COORDS,
@@ -244,6 +247,87 @@ async def test_calc_route_info(
             assert (
                 routes[alternative].street_names == expected_street_names[alternative]
             )
+
+
+async def test_calc_routes_uses_custom_base_coords_for_address_lookup(
+    respx_mock: MockRouter,
+):
+    """Use explicitly provided base coordinates for address resolving."""
+
+    route_response = {
+        "response": {
+            "results": [{"length": 1000, "crossTime": 60}],
+            "streetNames": [],
+        }
+    }
+    respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).mock(return_value=Response(200, json=route_response))
+
+    coords_lookup_route = respx_mock.route(
+        path="/row-SearchServer/mozi",
+        params={"q": "Luisenstraße 30 65185 Wiesbaden, Germany"},
+    ).mock(return_value=Response(200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN))
+
+    async with route_calculator.WazeRouteCalculator() as client:
+        await client.calc_routes(
+            "50.00332659227126,8.262322651915843",
+            "Luisenstraße 30 65185 Wiesbaden, Germany",
+            base_coords=(48.137154, 11.576124),
+        )
+
+    request_params = coords_lookup_route.calls.last.request.url.params
+    assert float(request_params["lat"]) == pytest.approx(48.137154)
+    assert float(request_params["lon"]) == pytest.approx(11.576124)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected_lat", "expected_lon"),
+    (
+        (
+            "50.00332659227126,8.262322651915843",
+            "Luisenstraße 30 65185 Wiesbaden, Germany",
+            50.00332659227126,
+            8.262322651915843,
+        ),
+        (
+            "Luisenstraße 30 65185 Wiesbaden, Germany",
+            "50.00332659227126,8.262322651915843",
+            50.00332659227126,
+            8.262322651915843,
+        ),
+    ),
+)
+async def test_calc_routes_uses_other_endpoint_coords_as_base_when_missing(
+    start: str,
+    end: str,
+    expected_lat: float,
+    expected_lon: float,
+    respx_mock: MockRouter,
+):
+    """Use coordinate endpoint as base coords when only one side is an address."""
+
+    route_response = {
+        "response": {
+            "results": [{"length": 1000, "crossTime": 60}],
+            "streetNames": [],
+        }
+    }
+    respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).mock(return_value=Response(200, json=route_response))
+
+    coords_lookup_route = respx_mock.route(
+        path="/row-SearchServer/mozi",
+        params={"q": "Luisenstraße 30 65185 Wiesbaden, Germany"},
+    ).mock(return_value=Response(200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN))
+
+    async with route_calculator.WazeRouteCalculator() as client:
+        await client.calc_routes(start, end)
+
+    request_params = coords_lookup_route.calls.last.request.url.params
+    assert float(request_params["lat"]) == pytest.approx(expected_lat)
+    assert float(request_params["lon"]) == pytest.approx(expected_lon)
 
 
 @pytest.mark.usefixtures("timeout_mock")

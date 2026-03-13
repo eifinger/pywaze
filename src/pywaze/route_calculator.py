@@ -1,20 +1,29 @@
 """Waze route calculator."""
 
+import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
+
 import httpx
-import re
-import logging
 
 logger = logging.getLogger(__name__)
 
 
-class Coords(TypedDict):
-    """Coordinates and bounds."""
+class BaseCoords(TypedDict):
+    """Base coordinates."""
 
     lat: float
     lon: float
+
+
+class Coords(BaseCoords):
+    """Coordinates and bounds."""
+
     bounds: dict[str, float]
+
+
+BaseCoordsInput = BaseCoords | str | tuple[float, float]
 
 
 @dataclass(frozen=True)
@@ -43,7 +52,7 @@ class WazeRouteCalculator:
         "User-Agent": "pywaze",
         "referer": WAZE_URL,
     }
-    BASE_COORDS = {
+    BASE_COORDS: dict[str, BaseCoords] = {
         "US": {"lat": 40.713, "lon": -74.006},
         "NA": {"lat": 40.713, "lon": -74.006},
         "EU": {"lat": 47.498, "lon": 19.040},
@@ -84,13 +93,14 @@ class WazeRouteCalculator:
         m = re.search(self.COORD_MATCH, address)
         return m is not None
 
-    async def _ensure_coords(self, address: str) -> Coords:
-        coords = None
+    async def _ensure_coords(
+        self,
+        address: str,
+        base_coords: BaseCoords | None = None,
+    ) -> Coords:
         if self.already_coords(address):
-            coords = self.coords_string_parser(address)
-        else:
-            coords = await self.address_to_coords(address)
-        return coords
+            return self.coords_string_parser(address)
+        return await self.address_to_coords(address, base_coords=base_coords)
 
     def coords_string_parser(self, coords: str) -> Coords:
         """Parse the address string into coordinates to match address_to_coords return object."""
@@ -98,10 +108,29 @@ class WazeRouteCalculator:
         lat, lon = coords.split(",")
         return {"lat": float(lat.strip()), "lon": float(lon.strip()), "bounds": {}}
 
-    async def address_to_coords(self, address: str) -> Coords:
+    def _normalize_base_coords(self, base_coords: BaseCoordsInput) -> BaseCoords:
+        """Normalize supported base coordinate input formats."""
+
+        if isinstance(base_coords, str):
+            parsed_coords = self.coords_string_parser(base_coords)
+            return {"lat": parsed_coords["lat"], "lon": parsed_coords["lon"]}
+
+        if isinstance(base_coords, tuple):
+            return {"lat": float(base_coords[0]), "lon": float(base_coords[1])}
+
+        if isinstance(base_coords, dict):
+            return {"lat": float(base_coords["lat"]), "lon": float(base_coords["lon"])}
+
+        raise TypeError("base_coords must be a coords string, tuple, or dict")
+
+    async def address_to_coords(
+        self,
+        address: str,
+        base_coords: BaseCoords | None = None,
+    ) -> Coords:
         """Convert address to coordinates."""
 
-        base_coords = self.BASE_COORDS[self.region]
+        base_coords = base_coords or self.BASE_COORDS[self.region]
         get_cord = self.COORD_SERVERS[self.region]
         url_options: dict[str, str | float] = {
             "q": address,
@@ -268,11 +297,29 @@ class WazeRouteCalculator:
         time_delta: int = 0,
         real_time: bool = True,
         stop_at_bounds: bool = False,
+        base_coords: BaseCoordsInput | None = None,
     ) -> list[CalcRoutesResponse]:
         """Get route info with enhanced calculations like total distance."""
 
-        start_coords = await self._ensure_coords(start)
-        end_coords = await self._ensure_coords(end)
+        resolved_base_coords = (
+            self._normalize_base_coords(base_coords)
+            if base_coords is not None
+            else None
+        )
+
+        start_is_coords = self.already_coords(start)
+        end_is_coords = self.already_coords(end)
+
+        if resolved_base_coords is None:
+            if start_is_coords and not end_is_coords:
+                resolved_base_coords = self._normalize_base_coords(start)
+            elif end_is_coords and not start_is_coords:
+                resolved_base_coords = self._normalize_base_coords(end)
+
+        start_coords = await self._ensure_coords(
+            start, base_coords=resolved_base_coords
+        )
+        end_coords = await self._ensure_coords(end, base_coords=resolved_base_coords)
 
         routes = await self.get_routes(
             start_coords,
@@ -312,7 +359,7 @@ class WazeRouteCalculator:
         """Close the client."""
         await self.client.aclose()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "WazeRouteCalculator":
         """Support asynchronous context manager protocol."""
         return self
 
