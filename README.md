@@ -36,6 +36,19 @@ travel_time = asyncio.run(get_time(start, end))
 print(travel_time)
 ```
 
+### Address resolving base coordinates
+
+When one or both endpoints are addresses, `calc_routes()` resolves them via Waze search.
+You can provide custom base coordinates to make sure Waze tries to resolve the address near those coordinates:
+
+```python
+await client.calc_routes(start, end, base_coords=(48.137154, 11.576124))
+```
+
+If `base_coords` is omitted and exactly one endpoint is already coordinates,
+that coordinate endpoint is used automatically as base coordinates for
+resolving the address.
+
 ---
 
 [<img src="https://raw.githubusercontent.com/eifinger/pywaze/main/docs/images/bmc-button.svg" width=150 height=40 style="margin: 5px"/>](https://www.buymeacoffee.com/eifinger)
