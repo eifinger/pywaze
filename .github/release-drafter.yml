@@ -20,6 +20,7 @@ categories:
     labels:
       - "maintenance"
       - "ci"
+      - "chore"
   - title: "📚 Documentation"
     labels:
       - "documentation"
