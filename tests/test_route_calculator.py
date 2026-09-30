@@ -330,6 +330,29 @@ async def test_calc_routes_uses_other_endpoint_coords_as_base_when_missing(
     assert float(request_params["lon"]) == pytest.approx(expected_lon)
 
 
+@pytest.mark.parametrize(
+    ("response", "error"),
+    (
+        (Response(403, text="403 Forbidden"), "403 Forbidden"),
+        (Response(200, text="not JSON"), "empty response"),
+    ),
+)
+async def test_address_to_coords_wraps_invalid_responses(
+    response: Response,
+    error: str,
+    respx_mock: MockRouter,
+):
+    """Wrap invalid address lookup responses in WRCError."""
+
+    respx_mock.get("https://www.waze.com/row-SearchServer/mozi").mock(
+        return_value=response
+    )
+
+    async with route_calculator.WazeRouteCalculator() as client:
+        with pytest.raises(route_calculator.WRCError, match=f"^{error}$"):
+            await client.address_to_coords("Luisenstraße 30 65185 Wiesbaden, Germany")
+
+
 @pytest.mark.usefixtures("timeout_mock")
 async def test_calc_route_info_timeout():
     """Test calc_route_info with timeout."""
