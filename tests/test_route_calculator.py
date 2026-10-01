@@ -1,5 +1,8 @@
 """Tests for route_calculator module."""
 
+from unittest.mock import AsyncMock
+
+from curl_cffi.requests import Response as CurlResponse
 from httpx import Response
 import pytest
 from pywaze import route_calculator
@@ -262,10 +265,10 @@ async def test_calc_routes_uses_custom_base_coords_for_address_lookup(
     }
     respx_mock.get(
         "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
-    ).mock(return_value=Response(200, json=route_response))
+    ).respond(200, json=route_response)
 
     coords_lookup_route = respx_mock.route(
-        path="/row-SearchServer/mozi",
+        url="https://gapi.waze.com/autocomplete/q",
         params={"q": "Luisenstraße 30 65185 Wiesbaden, Germany"},
     ).mock(return_value=Response(200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN))
 
@@ -277,8 +280,7 @@ async def test_calc_routes_uses_custom_base_coords_for_address_lookup(
         )
 
     request_params = coords_lookup_route.calls.last.request.url.params
-    assert float(request_params["lat"]) == pytest.approx(48.137154)
-    assert float(request_params["lon"]) == pytest.approx(11.576124)
+    assert request_params["sll"] == "48.137154,11.576124"
 
 
 @pytest.mark.parametrize(
@@ -315,10 +317,10 @@ async def test_calc_routes_uses_other_endpoint_coords_as_base_when_missing(
     }
     respx_mock.get(
         "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
-    ).mock(return_value=Response(200, json=route_response))
+    ).respond(200, json=route_response)
 
     coords_lookup_route = respx_mock.route(
-        path="/row-SearchServer/mozi",
+        url="https://gapi.waze.com/autocomplete/q",
         params={"q": "Luisenstraße 30 65185 Wiesbaden, Germany"},
     ).mock(return_value=Response(200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN))
 
@@ -326,31 +328,31 @@ async def test_calc_routes_uses_other_endpoint_coords_as_base_when_missing(
         await client.calc_routes(start, end)
 
     request_params = coords_lookup_route.calls.last.request.url.params
-    assert float(request_params["lat"]) == pytest.approx(expected_lat)
-    assert float(request_params["lon"]) == pytest.approx(expected_lon)
+    assert request_params["sll"] == f"{expected_lat},{expected_lon}"
 
 
-@pytest.mark.parametrize(
-    ("response", "error"),
-    (
-        (Response(403, text="403 Forbidden"), "403 Forbidden"),
-        (Response(200, text="not JSON"), "empty response"),
-    ),
-)
-async def test_address_to_coords_wraps_invalid_responses(
-    response: Response,
-    error: str,
-    respx_mock: MockRouter,
+async def test_routing_falls_back_on_403(
+    respx_mock: MockRouter, routing_session_mock: AsyncMock
 ):
-    """Wrap invalid address lookup responses in WRCError."""
-
-    respx_mock.get("https://www.waze.com/row-SearchServer/mozi").mock(
-        return_value=response
-    )
+    """Retry an HTTPX 403 with curl_cffi and return the fallback route."""
+    url = route_calculator.WazeRouteCalculator.ROUTING_SERVERS["EU"]
+    blocked = respx_mock.get(url).respond(403)
+    response = CurlResponse()
+    response.status_code = 200
+    response.content = b'{"response": {"results": [{"length": 2400, "crossTime": 90}]}}'
+    routing_session_mock.get.return_value = response
 
     async with route_calculator.WazeRouteCalculator() as client:
-        with pytest.raises(route_calculator.WRCError, match=f"^{error}$"):
-            await client.address_to_coords("Luisenstraße 30 65185 Wiesbaden, Germany")
+        routes = await client.calc_routes("50.0033,8.2623", "50.0841,8.2478")
+
+    assert routes == [route_calculator.CalcRoutesResponse(1.5, 2.4, "", [])]
+    assert blocked.call_count == 1
+    routing_session_mock.get.assert_awaited_once()
+    assert routing_session_mock.get.call_args.args == (url,)
+    assert {
+        key: str(value)
+        for key, value in routing_session_mock.get.call_args.kwargs["params"].items()
+    } == dict(blocked.calls.last.request.url.params)
 
 
 @pytest.mark.usefixtures("timeout_mock")

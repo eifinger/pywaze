@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
 import httpx
+from curl_cffi.requests import AsyncSession, RequestsError
+from curl_cffi.requests import Response as CurlResponse
+from curl_cffi.requests.exceptions import Timeout as CurlTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +62,13 @@ class WazeRouteCalculator:
         "IL": {"lat": 31.768, "lon": 35.214},
         "AU": {"lat": -35.281, "lon": 149.128},
     }
-    COORD_SERVERS = {
-        "US": "SearchServer/mozi",
-        "NA": "SearchServer/mozi",
-        "EU": "row-SearchServer/mozi",
-        "IL": "il-SearchServer/mozi",
-        "AU": "row-SearchServer/mozi",
+    AUTOCOMPLETE_URL = "https://gapi.waze.com/autocomplete/q"
+    AUTOCOMPLETE_ENVIRONMENTS = {
+        "US": "NA",
+        "NA": "NA",
+        "EU": "ROW",
+        "IL": "IL",
+        "AU": "ROW",
     }
     ROUTING_SERVERS = {
         "US": "https://routing-livemap-am.waze.com/RoutingManager/routingRequest",
@@ -86,6 +90,8 @@ class WazeRouteCalculator:
         self.region = region
         self.client = client or httpx.AsyncClient(timeout=timeout)
         self.timeout = timeout
+        # Waze rejects HTTPX's TLS fingerprint even with browser headers.
+        self._impersonating_client: AsyncSession = AsyncSession(impersonate="chrome136")
 
     def already_coords(self, address: str) -> bool:
         """Already coordinates or address."""
@@ -128,46 +134,47 @@ class WazeRouteCalculator:
         address: str,
         base_coords: BaseCoords | None = None,
     ) -> Coords:
-        """Convert address to coordinates."""
+        """Convert address to coordinates using Waze's mobile autocomplete API."""
 
         base_coords = base_coords or self.BASE_COORDS[self.region]
-        get_cord = self.COORD_SERVERS[self.region]
-        url_options: dict[str, str | float] = {
-            "q": address,
-            "lang": "eng",
-            "origin": "livemap",
-            "lat": base_coords["lat"],
-            "lon": base_coords["lon"],
-        }
-
         try:
-            response: httpx.Response = await self.client.get(
-                self.WAZE_URL + get_cord,
-                params=url_options,
+            response = await self.client.get(
+                self.AUTOCOMPLETE_URL,
+                params={
+                    "q": address,
+                    "e": self.AUTOCOMPLETE_ENVIRONMENTS[self.region],
+                    # The mobile client ID works without the website's reCAPTCHA.
+                    "c": "wd",
+                    "exp": "8",
+                    "gxy": "1",
+                    "sll": f"{base_coords['lat']},{base_coords['lon']}",
+                    "lang": "en",
+                },
                 headers=self.HEADERS,
                 timeout=self.timeout,
             )
         except httpx.TimeoutException as e:
             raise WRCTimeoutError(f"Timeout getting coords for {address}") from e
-        for response_json in self._check_response(response):
-            if response_json.get("city"):
-                lat: float = response_json["location"]["lat"]
-                lon: float = response_json["location"]["lon"]
-                bounds: dict[str, float] = response_json[
-                    "bounds"
-                ]  # sometimes the coords don't match up
-                if bounds is not None:
-                    bounds["top"], bounds["bottom"] = (
-                        max(bounds["top"], bounds["bottom"]),
-                        min(bounds["top"], bounds["bottom"]),
-                    )
-                    bounds["left"], bounds["right"] = (
-                        min(bounds["left"], bounds["right"]),
-                        max(bounds["left"], bounds["right"]),
-                    )
-                else:
-                    bounds = {}
-                return {"lat": lat, "lon": lon, "bounds": bounds}
+        payload = self._check_response(response)
+        if (
+            not isinstance(payload, list)
+            or len(payload) < 2
+            or not isinstance(payload[1], list)
+        ):
+            raise WRCError("Invalid autocomplete response")
+        try:
+            for suggestion in payload[1]:
+                if len(suggestion) < 4 or suggestion[3] is None:
+                    continue
+                place = suggestion[3]
+                if place.get("v", "").startswith("advertisement.poi-"):
+                    continue
+                lat, lon = place.get("y"), place.get("x")
+                if lat is not None and lon is not None:
+                    # Autocomplete supplies coordinates but no endpoint bounds.
+                    return {"lat": float(lat), "lon": float(lon), "bounds": {}}
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            raise WRCError("Invalid autocomplete response") from e
         raise WRCError(f"Cannot get coords for {address}")
 
     async def get_routes(
@@ -211,14 +218,23 @@ class WazeRouteCalculator:
             url_options["subscription"] = "*"
 
         try:
-            response: httpx.Response = await self.client.get(
+            response: httpx.Response | CurlResponse = await self.client.get(
                 routing_server,
                 params=url_options,
                 headers=self.HEADERS,
                 timeout=self.timeout,
             )
-        except httpx.TimeoutException as e:
+            if response.status_code == 403:
+                response = await self._impersonating_client.get(
+                    routing_server,
+                    params=url_options,
+                    headers=self.HEADERS,
+                    timeout=self.timeout,
+                )
+        except (httpx.TimeoutException, CurlTimeout) as e:
             raise WRCTimeoutError("Timeout getting route") from e
+        except RequestsError as e:
+            raise WRCError("Error getting route") from e
         response_json = self._check_response(response)
         if response_json.get("alternatives"):
             return [alt["response"] for alt in response_json["alternatives"]]
@@ -228,9 +244,9 @@ class WazeRouteCalculator:
         return [response_obj]
 
     @staticmethod
-    def _check_response(response: httpx.Response) -> Any:
+    def _check_response(response: httpx.Response | CurlResponse) -> Any:
         """Check waze server response."""
-        if response.is_success:
+        if 200 <= response.status_code < 300:
             try:
                 response_json = response.json()
                 logger.debug("Response is: %s", response_json)
@@ -357,7 +373,10 @@ class WazeRouteCalculator:
 
     async def close(self) -> None:
         """Close the client."""
-        await self.client.aclose()
+        try:
+            await self.client.aclose()
+        finally:
+            await self._impersonating_client.close()
 
     async def __aenter__(self) -> "WazeRouteCalculator":
         """Support asynchronous context manager protocol."""
