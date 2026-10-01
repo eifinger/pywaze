@@ -36,6 +36,10 @@ travel_time = asyncio.run(get_time(start, end))
 print(travel_time)
 ```
 
+Use the asynchronous context manager, or call `await client.close()` when finished.
+The calculator closes its own HTTPX client and its impersonating session, but
+leaves an injected `httpx.AsyncClient` open for its owner to close.
+
 ### Address resolving base coordinates
 
 When one or both endpoints are addresses, `calc_routes()` resolves them directly
