@@ -38,8 +38,9 @@ print(travel_time)
 
 ### Address resolving base coordinates
 
-When one or both endpoints are addresses, `calc_routes()` resolves them via Waze search.
-You can provide custom base coordinates to make sure Waze tries to resolve the address near those coordinates:
+When one or both endpoints are addresses, `calc_routes()` resolves them directly
+via Waze's mobile autocomplete API.
+You can provide custom base coordinates to bias address results near those coordinates:
 
 ```python
 await client.calc_routes(start, end, base_coords=(48.137154, 11.576124))
