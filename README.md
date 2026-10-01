@@ -36,6 +36,14 @@ travel_time = asyncio.run(get_time(start, end))
 print(travel_time)
 ```
 
+Use the asynchronous context manager, or call `await client.close()` when finished.
+The calculator closes its own HTTPX client and its impersonating session, but
+leaves an injected `httpx.AsyncClient` open for its owner to close.
+Consumers must close calculators after validation and on unload; closing a shared
+HTTPX client does not clean up a calculator's impersonating session.
+curl-cffi allocates native resources lazily on the first fallback request, but
+once used, its session requires explicit asynchronous cleanup, not garbage collection.
+
 ### Address resolving base coordinates
 
 When one or both endpoints are addresses, `calc_routes()` resolves them directly

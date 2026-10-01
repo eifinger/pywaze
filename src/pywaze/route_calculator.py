@@ -88,7 +88,8 @@ class WazeRouteCalculator:
         timeout: int = 60,
     ):
         self.region = region
-        self.client = client or httpx.AsyncClient(timeout=timeout)
+        self._owns_client = client is None
+        self.client = httpx.AsyncClient(timeout=timeout) if client is None else client
         self.timeout = timeout
         # Waze rejects HTTPX's TLS fingerprint even with browser headers.
         self._impersonating_client: AsyncSession = AsyncSession(impersonate="chrome136")
@@ -372,9 +373,10 @@ class WazeRouteCalculator:
         return result
 
     async def close(self) -> None:
-        """Close the client."""
+        """Close owned clients, leaving an injected HTTPX client open."""
         try:
-            await self.client.aclose()
+            if self._owns_client:
+                await self.client.aclose()
         finally:
             await self._impersonating_client.close()
 
@@ -383,5 +385,5 @@ class WazeRouteCalculator:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        """Close the client."""
+        """Close owned clients."""
         await self.close()

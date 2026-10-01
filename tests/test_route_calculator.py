@@ -1,9 +1,9 @@
 """Tests for route_calculator module."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from curl_cffi.requests import Response as CurlResponse
-from httpx import Response
+from httpx import AsyncClient, Response
 import pytest
 from pywaze import route_calculator
 from respx import MockRouter
@@ -353,6 +353,45 @@ async def test_routing_falls_back_on_403(
         key: str(value)
         for key, value in routing_session_mock.get.call_args.kwargs["params"].items()
     } == dict(blocked.calls.last.request.url.params)
+    routing_session_mock.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize("injected", (False, True))
+async def test_close_respects_client_ownership(
+    injected: bool, routing_session_mock: AsyncMock
+):
+    """Close owned clients but leave an injected HTTPX client open."""
+    async with AsyncClient() as shared_client:
+        async with route_calculator.WazeRouteCalculator(
+            client=shared_client if injected else None
+        ) as calculator:
+            if injected:
+                assert calculator.client is shared_client
+            assert not calculator.client.is_closed
+
+        assert calculator.client.is_closed is (not injected)
+        assert not shared_client.is_closed
+        routing_session_mock.close.assert_awaited_once()
+
+
+async def test_close_cleans_up_impersonating_client_on_httpx_error(
+    routing_session_mock: AsyncMock,
+):
+    """Close the fallback session even when owned HTTPX cleanup fails."""
+    calculator = route_calculator.WazeRouteCalculator()
+    try:
+        with (
+            patch.object(
+                calculator.client,
+                "aclose",
+                side_effect=RuntimeError("HTTPX cleanup failed"),
+            ),
+            pytest.raises(RuntimeError, match="HTTPX cleanup failed"),
+        ):
+            await calculator.close()
+        routing_session_mock.close.assert_awaited_once()
+    finally:
+        await calculator.client.aclose()
 
 
 @pytest.mark.usefixtures("timeout_mock")
