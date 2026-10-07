@@ -91,8 +91,21 @@ class WazeRouteCalculator:
         self._owns_client = client is None
         self.client = httpx.AsyncClient(timeout=timeout) if client is None else client
         self.timeout = timeout
-        # Waze rejects HTTPX's TLS fingerprint even with browser headers.
-        self._impersonating_client: AsyncSession = AsyncSession(impersonate="chrome136")
+
+    async def _get(
+        self, url: str, params: dict[str, str | int]
+    ) -> httpx.Response | CurlResponse:
+        """Retry blocked requests with a fresh browser-impersonating session."""
+        response: httpx.Response | CurlResponse = await self.client.get(
+            url, params=params, headers=self.HEADERS, timeout=self.timeout
+        )
+        if response.status_code == 403:
+            # Waze rejects HTTPX's TLS fingerprint and curl sessions that are idle for more than 1 minute.
+            async with AsyncSession(impersonate="chrome") as client:
+                response = await client.get(
+                    url, params=params, headers=self.HEADERS, timeout=self.timeout
+                )
+        return response
 
     def already_coords(self, address: str) -> bool:
         """Already coordinates or address."""
@@ -139,7 +152,7 @@ class WazeRouteCalculator:
 
         base_coords = base_coords or self.BASE_COORDS[self.region]
         try:
-            response = await self.client.get(
+            response = await self._get(
                 self.AUTOCOMPLETE_URL,
                 params={
                     "q": address,
@@ -151,11 +164,11 @@ class WazeRouteCalculator:
                     "sll": f"{base_coords['lat']},{base_coords['lon']}",
                     "lang": "en",
                 },
-                headers=self.HEADERS,
-                timeout=self.timeout,
             )
-        except httpx.TimeoutException as e:
+        except (httpx.TimeoutException, CurlTimeout) as e:
             raise WRCTimeoutError(f"Timeout getting coords for {address}") from e
+        except RequestsError as e:
+            raise WRCError(f"Error getting coords for {address}") from e
         payload = self._check_response(response)
         if (
             not isinstance(payload, list)
@@ -219,19 +232,7 @@ class WazeRouteCalculator:
             url_options["subscription"] = "*"
 
         try:
-            response: httpx.Response | CurlResponse = await self.client.get(
-                routing_server,
-                params=url_options,
-                headers=self.HEADERS,
-                timeout=self.timeout,
-            )
-            if response.status_code == 403:
-                response = await self._impersonating_client.get(
-                    routing_server,
-                    params=url_options,
-                    headers=self.HEADERS,
-                    timeout=self.timeout,
-                )
+            response = await self._get(routing_server, params=url_options)
         except (httpx.TimeoutException, CurlTimeout) as e:
             raise WRCTimeoutError("Timeout getting route") from e
         except RequestsError as e:
@@ -373,12 +374,9 @@ class WazeRouteCalculator:
         return result
 
     async def close(self) -> None:
-        """Close owned clients, leaving an injected HTTPX client open."""
-        try:
-            if self._owns_client:
-                await self.client.aclose()
-        finally:
-            await self._impersonating_client.close()
+        """Close the owned HTTPX client, leaving an injected client open."""
+        if self._owns_client:
+            await self.client.aclose()
 
     async def __aenter__(self) -> "WazeRouteCalculator":
         """Support asynchronous context manager protocol."""

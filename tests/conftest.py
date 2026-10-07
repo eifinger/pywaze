@@ -17,11 +17,12 @@ from tests.const import (
 
 
 @pytest.fixture
-def routing_session_mock():
-    """Mock the routing transport without affecting HTTPX address requests."""
+def fallback_session_factory():
+    """Mock the fallback session factory without affecting HTTPX requests."""
     with patch.object(route_calculator, "AsyncSession") as factory:
         factory.return_value = AsyncMock(spec=AsyncSession)
-        yield factory.return_value
+        factory.return_value.__aenter__.return_value = factory.return_value
+        yield factory
 
 
 @pytest.fixture
