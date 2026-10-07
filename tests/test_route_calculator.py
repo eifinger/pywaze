@@ -1,8 +1,10 @@
 """Tests for route_calculator module."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, call
 
+from curl_cffi.requests import RequestsError
 from curl_cffi.requests import Response as CurlResponse
+from curl_cffi.requests.exceptions import Timeout as CurlTimeout
 from httpx import AsyncClient, Response
 import pytest
 from pywaze import route_calculator
@@ -332,7 +334,7 @@ async def test_calc_routes_uses_other_endpoint_coords_as_base_when_missing(
 
 
 async def test_routing_falls_back_on_403(
-    respx_mock: MockRouter, routing_session_mock: AsyncMock
+    respx_mock: MockRouter, fallback_session_factory: Mock
 ):
     """Retry an HTTPX 403 with curl_cffi and return the fallback route."""
     url = route_calculator.WazeRouteCalculator.ROUTING_SERVERS["EU"]
@@ -340,25 +342,164 @@ async def test_routing_falls_back_on_403(
     response = CurlResponse()
     response.status_code = 200
     response.content = b'{"response": {"results": [{"length": 2400, "crossTime": 90}]}}'
-    routing_session_mock.get.return_value = response
+    session = fallback_session_factory.return_value
+    session.get.return_value = response
 
-    async with route_calculator.WazeRouteCalculator() as client:
+    async with route_calculator.WazeRouteCalculator(timeout=17) as client:
         routes = await client.calc_routes("50.0033,8.2623", "50.0841,8.2478")
+        session.__aexit__.assert_awaited_once_with(None, None, None)
 
     assert routes == [route_calculator.CalcRoutesResponse(1.5, 2.4, "", [])]
     assert blocked.call_count == 1
-    routing_session_mock.get.assert_awaited_once()
-    assert routing_session_mock.get.call_args.args == (url,)
+    fallback_session_factory.assert_called_once_with(impersonate="chrome")
+    session.get.assert_awaited_once()
+    assert session.get.call_args.args == (url,)
     assert {
-        key: str(value)
-        for key, value in routing_session_mock.get.call_args.kwargs["params"].items()
+        key: str(value) for key, value in session.get.call_args.kwargs["params"].items()
     } == dict(blocked.calls.last.request.url.params)
-    routing_session_mock.close.assert_awaited_once()
+    assert session.get.call_args.kwargs["headers"] == client.HEADERS
+    assert session.get.call_args.kwargs["timeout"] == 17
+
+
+@pytest.mark.parametrize("lookup", (False, True), ids=("routing", "address"))
+async def test_fallback_uses_fresh_session_per_request(
+    lookup: bool, respx_mock: MockRouter, fallback_session_factory: Mock
+):
+    """Use separate sessions for repeated requests on the same calculator."""
+    url = (
+        route_calculator.WazeRouteCalculator.AUTOCOMPLETE_URL
+        if lookup
+        else route_calculator.WazeRouteCalculator.ROUTING_SERVERS["EU"]
+    )
+    blocked = respx_mock.get(url).respond(403)
+    sessions = [fallback_session_factory.return_value, AsyncMock()]
+    fallback_session_factory.side_effect = sessions
+    for session in sessions:
+        session.__aenter__.return_value = session
+        session.get.return_value = Response(
+            200,
+            json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN
+            if lookup
+            else {"response": {"results": [{"length": 2400, "crossTime": 90}]}},
+        )
+
+    async with route_calculator.WazeRouteCalculator(timeout=23) as client:
+        fallback_session_factory.assert_not_called()
+        for session in sessions:
+            if lookup:
+                coords = await client.address_to_coords(
+                    "Wiesbaden", base_coords={"lat": 48.1, "lon": 11.6}
+                )
+                assert coords == {
+                    "lat": 50.07912063598633,
+                    "lon": 8.240204811096191,
+                    "bounds": {},
+                }
+                assert session.get.call_args.kwargs["params"]["sll"] == "48.1,11.6"
+            else:
+                routes = await client.calc_routes("50.0033,8.2623", "50.0841,8.2478")
+                assert routes == [route_calculator.CalcRoutesResponse(1.5, 2.4, "", [])]
+            session.get.assert_awaited_once()
+            assert session.get.call_args.args == (url,)
+            assert session.get.call_args.kwargs["headers"] == client.HEADERS
+            assert session.get.call_args.kwargs["timeout"] == 23
+            assert {
+                key: str(value)
+                for key, value in session.get.call_args.kwargs["params"].items()
+            } == dict(blocked.calls.last.request.url.params)
+            session.__aexit__.assert_awaited_once_with(None, None, None)
+
+    assert blocked.call_count == 2
+    assert fallback_session_factory.call_args_list == [call(impersonate="chrome")] * 2
+
+
+@pytest.mark.parametrize("lookup", (False, True), ids=("routing", "address"))
+@pytest.mark.parametrize("status", (200, 500))
+async def test_fallback_only_on_403(
+    lookup: bool, status: int, respx_mock: MockRouter, fallback_session_factory: Mock
+):
+    """Do not create fallback sessions for success or other HTTP errors."""
+    url = (
+        route_calculator.WazeRouteCalculator.AUTOCOMPLETE_URL
+        if lookup
+        else route_calculator.WazeRouteCalculator.ROUTING_SERVERS["EU"]
+    )
+    respx_mock.get(url).respond(
+        status,
+        json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN if lookup else {"response": {}},
+    )
+    async with route_calculator.WazeRouteCalculator() as client:
+        request = (
+            client.address_to_coords("Wiesbaden")
+            if lookup
+            else client.get_routes(
+                {"lat": 50.0, "lon": 8.2, "bounds": {}},
+                {"lat": 50.1, "lon": 8.3, "bounds": {}},
+            )
+        )
+        if status == 200:
+            await request
+        else:
+            with pytest.raises(route_calculator.WRCError):
+                await request
+    fallback_session_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("lookup", (False, True), ids=("routing", "address"))
+@pytest.mark.parametrize(
+    ("failure", "expected_error", "message"),
+    (
+        (
+            CurlTimeout("curl timeout"),
+            route_calculator.WRCTimeoutError,
+            "Timeout getting",
+        ),
+        (RequestsError("curl error"), route_calculator.WRCError, "Error getting"),
+        (
+            Response(403, text="still blocked"),
+            route_calculator.WRCError,
+            "still blocked",
+        ),
+    ),
+)
+async def test_fallback_errors_close_session(
+    lookup: bool,
+    failure,
+    expected_error,
+    message: str,
+    respx_mock: MockRouter,
+    fallback_session_factory: Mock,
+):
+    """Map fallback failures to public errors and exit the session immediately."""
+    url = (
+        route_calculator.WazeRouteCalculator.AUTOCOMPLETE_URL
+        if lookup
+        else route_calculator.WazeRouteCalculator.ROUTING_SERVERS["EU"]
+    )
+    respx_mock.get(url).respond(403)
+    session = fallback_session_factory.return_value
+    if isinstance(failure, Exception):
+        session.get.side_effect = failure
+    else:
+        session.get.return_value = failure
+    async with route_calculator.WazeRouteCalculator() as client:
+        with pytest.raises(expected_error, match=message) as exc_info:
+            if lookup:
+                await client.address_to_coords("Wiesbaden")
+            else:
+                await client.calc_routes("50.0033,8.2623", "50.0841,8.2478")
+        session.__aexit__.assert_awaited_once()
+        if isinstance(failure, Exception):
+            assert exc_info.value.__cause__ is failure
+            assert session.__aexit__.call_args.args[1] is failure
+        else:
+            session.__aexit__.assert_awaited_once_with(None, None, None)
+    fallback_session_factory.assert_called_once_with(impersonate="chrome")
 
 
 @pytest.mark.parametrize("injected", (False, True))
 async def test_close_respects_client_ownership(
-    injected: bool, routing_session_mock: AsyncMock
+    injected: bool, fallback_session_factory: Mock
 ):
     """Close owned clients but leave an injected HTTPX client open."""
     async with AsyncClient() as shared_client:
@@ -371,27 +512,7 @@ async def test_close_respects_client_ownership(
 
         assert calculator.client.is_closed is (not injected)
         assert not shared_client.is_closed
-        routing_session_mock.close.assert_awaited_once()
-
-
-async def test_close_cleans_up_impersonating_client_on_httpx_error(
-    routing_session_mock: AsyncMock,
-):
-    """Close the fallback session even when owned HTTPX cleanup fails."""
-    calculator = route_calculator.WazeRouteCalculator()
-    try:
-        with (
-            patch.object(
-                calculator.client,
-                "aclose",
-                side_effect=RuntimeError("HTTPX cleanup failed"),
-            ),
-            pytest.raises(RuntimeError, match="HTTPX cleanup failed"),
-        ):
-            await calculator.close()
-        routing_session_mock.close.assert_awaited_once()
-    finally:
-        await calculator.client.aclose()
+        fallback_session_factory.assert_not_called()
 
 
 @pytest.mark.usefixtures("timeout_mock")
