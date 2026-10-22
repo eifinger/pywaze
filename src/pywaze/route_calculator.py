@@ -266,8 +266,13 @@ class WazeRouteCalculator:
         end_bounds: dict[str, float],
         real_time: bool = True,
         stop_at_bounds: bool = False,
+        include_penalty: bool = True,
     ) -> tuple[float, float]:
-        """Calculate route time and distance."""
+        """Calculate route time and distance.
+
+        When include_penalty is set, the per-segment Waze penalty (seconds) is added
+        to the duration for open, non-HOV-lane segments.
+        """
 
         def between(target: float, min: float, max: float) -> bool:
             return target > min and target < max
@@ -298,6 +303,12 @@ class WazeRouteCalculator:
                 time += segment[
                     "cross_time" if real_time else "cross_time_without_real_time"
                 ]
+            if (
+                include_penalty
+                and segment.get("avoidStatus", "OPEN") == "OPEN"
+                and not segment.get("useHovLane", False)
+            ):
+                time += segment.get("penalty", 0)
             distance += segment["length"]
         route_time = time / 60.0
         route_distance = distance / 1000.0

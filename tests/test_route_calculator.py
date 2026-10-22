@@ -35,7 +35,7 @@ from tests.const import (
             "50.08414976707619,8.247836017342934",
             1,
             GET_ROUTE_RESPONSE_COORDS,
-            [18.4],
+            [19.383333333333333],
             [12.715],
             ["B455 - Boelckestraße Wiesbaden"],
             [
@@ -76,7 +76,7 @@ from tests.const import (
             "Luisenstraße 30 65185 Wiesbaden, Germany",
             1,
             GET_ROUTE_RESPONSE_ADDRESSES,
-            [18.183333333333334],
+            [19.166666666666668],
             [12.644],
             ["B455 - Boelckestraße Wiesbaden"],
             [
@@ -116,7 +116,7 @@ from tests.const import (
             "50.08414976707619,8.247836017342934",
             3,
             GET_ALL_ROUTES_RESPONSE,
-            [20.5, 25.883333333333333, 28.566666666666666],
+            [21.483333333333333, 26.666666666666668, 29.9],
             [12.635, 13.066, 12.957],
             [
                 "B455 - Boelckestraße Wiesbaden",
@@ -222,7 +222,7 @@ from tests.const import (
             "31.80459309184719,35.21160542964936",
             1,
             EMPTY_ROUTE_NAME_RESPONSE,
-            [0.03333333333333333],
+            [0.06666666666666667],
             [0.007],
             [""],
             [[]],
@@ -525,3 +525,66 @@ async def test_calc_route_info_timeout():
                 "50.00332659227126,8.262322651915843",
                 "50.08414976707619,8.247836017342934",
             )
+
+
+def _add_up(segments, **kwargs):
+    """Run _add_up_route on bare segments."""
+    return route_calculator.WazeRouteCalculator()._add_up_route(
+        segments, {}, {}, **kwargs
+    )
+
+
+@pytest.mark.parametrize(
+    ("segment", "expected_seconds"),
+    (
+        pytest.param({}, 60 + 30, id="open-by-default"),
+        pytest.param({"avoidStatus": "OPEN"}, 60 + 30, id="open"),
+        pytest.param({"avoidStatus": "MAYBE"}, 60, id="maybe"),
+        pytest.param({"avoidStatus": "CAN_PASS"}, 60, id="can-pass"),
+        pytest.param({"avoidStatus": "AVOID"}, 60, id="avoid"),
+        pytest.param({"avoidStatus": "OPEN", "useHovLane": True}, 60, id="hov-lane"),
+        pytest.param(
+            {"avoidStatus": "OPEN", "useHovLane": False}, 60 + 30, id="no-hov"
+        ),
+    ),
+)
+def test_add_up_route_penalty_by_segment_status(segment: dict, expected_seconds: int):
+    """Only open, non-HOV-lane segments contribute their penalty."""
+    duration, distance = _add_up(
+        [{"crossTime": 60, "length": 1000, "penalty": 30, **segment}]
+    )
+    assert duration == expected_seconds / 60.0
+    assert distance == 1.0
+
+
+@pytest.mark.parametrize(
+    "segment",
+    (
+        pytest.param({"crossTime": 60, "length": 1000}, id="missing"),
+        pytest.param({"crossTime": 60, "length": 1000, "penalty": 0}, id="zero"),
+    ),
+)
+def test_add_up_route_missing_or_zero_penalty(segment: dict):
+    """Segments without a (non-zero) penalty are unchanged."""
+    assert _add_up([segment]) == (1.0, 1.0)
+
+
+def test_add_up_route_penalty_can_be_disabled():
+    """include_penalty=False restores the plain cross-time sum."""
+    segments = [{"crossTime": 60, "length": 1000, "penalty": 30}]
+    assert _add_up(segments, include_penalty=False) == (1.0, 1.0)
+    assert _add_up(segments, include_penalty=True) == (1.5, 1.0)
+
+
+def test_add_up_route_penalty_uses_snake_case_fields_and_real_time_flag():
+    """Penalty is added on top of whichever cross time is selected."""
+    segments = [
+        {
+            "cross_time": 120,
+            "cross_time_without_real_time": 60,
+            "length": 500,
+            "penalty": 30,
+        }
+    ]
+    assert _add_up(segments, real_time=True) == (2.5, 0.5)
+    assert _add_up(segments, real_time=False) == (1.5, 0.5)
