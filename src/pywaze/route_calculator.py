@@ -349,6 +349,17 @@ class WazeRouteCalculator:
             alternatives=alternatives,
             time_delta=time_delta,
         )
+        # Waze appends HOV / passenger-restricted copies of the alternatives, which
+        # are not drivable alone. Drop them unless nothing else was returned.
+        non_hov_routes = [
+            route
+            for route in routes
+            if route.get("minPassengers", 0) == 0
+            and "HOV" not in route.get("routeAttr", [])
+        ]
+        if non_hov_routes:
+            routes = non_hov_routes
+
         result = []
         for route in routes:
             results = route["results" if "results" in route else "result"]
