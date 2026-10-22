@@ -81,6 +81,12 @@ class WazeRouteCalculator:
         r"^([-+]?)([\d]{1,2})(((\.)(\d+)(,)))(\s*)(([-+]?)([\d]{1,3})((\.)(\d+))?)$"
     )
 
+    # "Venue, 123 Street, City, ST ..." -> drop everything up to the street address.
+    # US-style addresses only (two-letter state code).
+    VENUE_PREFIX_MATCH = re.compile(
+        r"^.*,\s*(?=[0-9]+\s+[^,]+,\s*[^,]+,\s*[A-Z]{2}(?:[\s,]|$))"
+    )
+
     def __init__(
         self,
         region="EU",
@@ -151,11 +157,13 @@ class WazeRouteCalculator:
         """Convert address to coordinates using Waze's mobile autocomplete API."""
 
         base_coords = base_coords or self.BASE_COORDS[self.region]
+        # Autocomplete often finds nothing for "Venue name, street address" strings.
+        query = self.VENUE_PREFIX_MATCH.sub("", address).strip() or address
         try:
             response = await self._get(
                 self.AUTOCOMPLETE_URL,
                 params={
-                    "q": address,
+                    "q": query,
                     "e": self.AUTOCOMPLETE_ENVIRONMENTS[self.region],
                     # The mobile client ID works without the website's reCAPTCHA.
                     "c": "wd",
