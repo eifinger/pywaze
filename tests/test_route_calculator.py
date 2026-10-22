@@ -525,3 +525,53 @@ async def test_calc_route_info_timeout():
                 "50.00332659227126,8.262322651915843",
                 "50.08414976707619,8.247836017342934",
             )
+
+
+@pytest.mark.parametrize(
+    "default_base",
+    (
+        pytest.param(route_calculator.WazeRouteCalculator.BASE_COORDS["EU"], id="dict"),
+        pytest.param((47.498, 19.040), id="tuple"),
+        pytest.param("47.498,19.040", id="string"),
+    ),
+)
+async def test_calc_routes_region_default_base_coords_is_replaced_by_endpoint(
+    default_base, respx_mock: MockRouter
+):
+    """Passing the region default behaves as if no base coords were given."""
+    respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).respond(200, json={"response": {"results": [{"length": 1, "crossTime": 1}]}})
+    lookup = respx_mock.get("https://gapi.waze.com/autocomplete/q").respond(
+        200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN
+    )
+
+    async with route_calculator.WazeRouteCalculator("EU") as client:
+        await client.calc_routes(
+            "50.0033,8.2623",
+            "Luisenstraße 30 65185 Wiesbaden, Germany",
+            base_coords=default_base,
+        )
+
+    assert lookup.calls.last.request.url.params["sll"] == "50.0033,8.2623"
+
+
+async def test_calc_routes_region_default_base_coords_kept_without_coords_endpoint(
+    respx_mock: MockRouter,
+):
+    """With two addresses there is nothing to infer from; keep the region default."""
+    respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).respond(200, json={"response": {"results": [{"length": 1, "crossTime": 1}]}})
+    lookup = respx_mock.get("https://gapi.waze.com/autocomplete/q").respond(
+        200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN
+    )
+
+    async with route_calculator.WazeRouteCalculator("EU") as client:
+        await client.calc_routes(
+            "Kaiserstraße 30 55116 Mainz, Germany",
+            "Luisenstraße 30 65185 Wiesbaden, Germany",
+            base_coords=route_calculator.WazeRouteCalculator.BASE_COORDS["EU"],
+        )
+
+    assert {call.request.url.params["sll"] for call in lookup.calls} == {"47.498,19.04"}

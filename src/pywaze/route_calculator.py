@@ -328,7 +328,11 @@ class WazeRouteCalculator:
         start_is_coords = self.already_coords(start)
         end_is_coords = self.already_coords(end)
 
-        if resolved_base_coords is None:
+        # Treat the region's built-in default like "not provided": biasing lookups
+        # to e.g. New York is never better than biasing to the other endpoint.
+        if resolved_base_coords is None or resolved_base_coords == self.BASE_COORDS.get(
+            self.region
+        ):
             if start_is_coords and not end_is_coords:
                 resolved_base_coords = self._normalize_base_coords(start)
             elif end_is_coords and not start_is_coords:
