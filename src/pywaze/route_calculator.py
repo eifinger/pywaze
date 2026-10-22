@@ -217,8 +217,6 @@ class WazeRouteCalculator:
             "to": f"x:{end['lon']} y:{end['lat']}",
             "at": time_delta,
             "returnJSON": "true",
-            "returnGeometries": "true",
-            "returnInstructions": "true",
             "timeout": 60000,
             "nPaths": alternatives,
             "options": ",".join(
