@@ -525,3 +525,65 @@ async def test_calc_route_info_timeout():
                 "50.00332659227126,8.262322651915843",
                 "50.08414976707619,8.247836017342934",
             )
+
+
+def _alternative(name: str, seconds: int, **attrs) -> dict:
+    return {
+        "routeName": name,
+        "streetNames": [],
+        "results": [{"length": 1000, "crossTime": seconds}],
+        **attrs,
+    }
+
+
+@pytest.mark.parametrize(
+    "hov_attrs",
+    (
+        pytest.param({"minPassengers": 1}, id="min-passengers"),
+        pytest.param({"minPassengers": 3, "routeAttr": ["HOV"]}, id="hov-attr"),
+        pytest.param({"routeAttr": ["Toll", "HOV"]}, id="hov-attr-with-toll"),
+    ),
+)
+async def test_calc_routes_excludes_hov_routes(hov_attrs: dict, respx_mock: MockRouter):
+    """Passenger-restricted alternatives are not returned when others exist."""
+    respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).respond(
+        200,
+        json={
+            "alternatives": [
+                {"response": _alternative("hov", 60, **hov_attrs)},
+                {"response": _alternative("open", 120, routeAttr=["Toll"])},
+                {"response": _alternative("other", 180)},
+            ]
+        },
+    )
+
+    async with route_calculator.WazeRouteCalculator() as client:
+        routes = await client.calc_routes(
+            "50.0033,8.2623", "50.0841,8.2478", alternatives=3
+        )
+
+    assert [route.name for route in routes] == ["open", "other"]
+
+
+async def test_calc_routes_keeps_hov_routes_when_nothing_else(
+    respx_mock: MockRouter,
+):
+    """Return HOV routes rather than nothing when they are the only ones."""
+    respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).respond(
+        200,
+        json={
+            "alternatives": [
+                {"response": _alternative("a", 60, minPassengers=2)},
+                {"response": _alternative("b", 120, routeAttr=["HOV"])},
+            ]
+        },
+    )
+
+    async with route_calculator.WazeRouteCalculator() as client:
+        routes = await client.calc_routes("50.0033,8.2623", "50.0841,8.2478")
+
+    assert [route.name for route in routes] == ["a", "b"]
