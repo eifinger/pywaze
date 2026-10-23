@@ -36,9 +36,13 @@ travel_time = asyncio.run(get_time(start, end))
 print(travel_time)
 ```
 
-Use the asynchronous context manager, or call `await client.close()` when finished.
-The calculator closes its own HTTPX client and its impersonating session, but
-leaves an injected `httpx.AsyncClient` open for its owner to close.
+Every request is made with a fresh, browser-impersonating `curl_cffi` session that
+is closed as soon as the request finishes, so there is nothing long-lived to clean up.
+The asynchronous context manager and `await client.close()` are kept for backwards
+compatibility.
+
+The `client` constructor argument (an injected `httpx.AsyncClient`) is deprecated and
+ignored: Waze rejects HTTPX's TLS fingerprint. Passing it emits a `DeprecationWarning`.
 
 ### Address resolving base coordinates
 

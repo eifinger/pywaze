@@ -2,7 +2,6 @@
 
 import os
 
-import httpx
 import pytest
 
 from pywaze.route_calculator import WazeRouteCalculator
@@ -54,11 +53,8 @@ pytestmark = pytest.mark.skipif(
 async def test_live_coordinate_address_and_mixed_routes(
     region: str, start: str, end: str, addresses: tuple[str, str]
 ):
-    """Exercise the unchanged API, including an injected HTTPX client, in every region."""
-    async with (
-        httpx.AsyncClient() as injected,
-        WazeRouteCalculator(region, client=injected) as client,
-    ):
+    """Exercise the unchanged API in every region."""
+    async with WazeRouteCalculator(region) as client:
         bias_lat, bias_lon = map(float, start.split(","))
         for address, reference in zip(addresses, (start, end), strict=True):
             coords = await client.address_to_coords(
