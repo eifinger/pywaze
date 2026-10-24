@@ -2,6 +2,7 @@
 
 import logging
 import re
+import warnings
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
@@ -93,25 +94,27 @@ class WazeRouteCalculator:
         client: httpx.AsyncClient | None = None,
         timeout: int = 60,
     ):
+        if client is not None:
+            warnings.warn(
+                "The client argument is deprecated and ignored: requests are made "
+                "with a fresh browser-impersonating curl_cffi session.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.region = region
-        self._owns_client = client is None
-        self.client = httpx.AsyncClient(timeout=timeout) if client is None else client
         self.timeout = timeout
 
-    async def _get(
-        self, url: str, params: dict[str, str | int]
-    ) -> httpx.Response | CurlResponse:
-        """Retry blocked requests with a fresh browser-impersonating session."""
-        response: httpx.Response | CurlResponse = await self.client.get(
-            url, params=params, headers=self.HEADERS, timeout=self.timeout
-        )
-        if response.status_code == 403:
-            # Waze rejects HTTPX's TLS fingerprint and curl sessions that are idle for more than 1 minute.
-            async with AsyncSession(impersonate="chrome") as client:
-                response = await client.get(
-                    url, params=params, headers=self.HEADERS, timeout=self.timeout
-                )
-        return response
+    async def _get(self, url: str, params: dict[str, str | int]) -> CurlResponse:
+        """Make a request with a fresh browser-impersonating session.
+
+        Waze rejects HTTPX's TLS fingerprint and curl sessions that have been idle for
+        more than a minute, so never reuse a session.
+        """
+        async with AsyncSession(impersonate="chrome") as session:
+            response: CurlResponse = await session.get(
+                url, params=params, headers=self.HEADERS, timeout=self.timeout
+            )
+            return response
 
     def already_coords(self, address: str) -> bool:
         """Already coordinates or address."""
@@ -173,7 +176,7 @@ class WazeRouteCalculator:
                     "lang": "en",
                 },
             )
-        except (httpx.TimeoutException, CurlTimeout) as e:
+        except CurlTimeout as e:
             raise WRCTimeoutError(f"Timeout getting coords for {address}") from e
         except RequestsError as e:
             raise WRCError(f"Error getting coords for {address}") from e
@@ -239,7 +242,7 @@ class WazeRouteCalculator:
 
         try:
             response = await self._get(routing_server, params=url_options)
-        except (httpx.TimeoutException, CurlTimeout) as e:
+        except CurlTimeout as e:
             raise WRCTimeoutError("Timeout getting route") from e
         except RequestsError as e:
             raise WRCError("Error getting route") from e
@@ -252,11 +255,11 @@ class WazeRouteCalculator:
         return [response_obj]
 
     @staticmethod
-    def _check_response(response: httpx.Response | CurlResponse) -> Any:
+    def _check_response(response: CurlResponse) -> Any:
         """Check waze server response."""
         if 200 <= response.status_code < 300:
             try:
-                response_json = response.json()
+                response_json = response.json()  # type: ignore[no-untyped-call]
                 logger.debug("Response is: %s", response_json)
                 if "error" in response_json:
                     raise WRCError(response_json.get("error"))
@@ -391,14 +394,12 @@ class WazeRouteCalculator:
         return result
 
     async def close(self) -> None:
-        """Close the owned HTTPX client, leaving an injected client open."""
-        if self._owns_client:
-            await self.client.aclose()
+        """Kept for backwards compatibility: there is no long-lived client to close."""
 
     async def __aenter__(self) -> "WazeRouteCalculator":
         """Support asynchronous context manager protocol."""
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        """Close owned clients."""
+        """Exit the asynchronous context manager."""
         await self.close()
