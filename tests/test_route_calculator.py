@@ -587,3 +587,35 @@ async def test_calc_routes_keeps_hov_routes_when_nothing_else(
         routes = await client.calc_routes("50.0033,8.2623", "50.0841,8.2478")
 
     assert [route.name for route in routes] == ["a", "b"]
+
+
+async def test_get_routes_does_not_request_geometries_or_instructions(
+    respx_mock: MockRouter,
+):
+    """Omit the flags: Waze treats any value, even "false", as a request for them."""
+    get_route_mock = respx_mock.get(
+        "https://routing-livemap-row.waze.com/RoutingManager/routingRequest"
+    ).respond(200, json={"response": {"results": [], "streetNames": []}})
+    async with route_calculator.WazeRouteCalculator() as client:
+        await client.get_routes(
+            {"lat": 50.0, "lon": 8.2, "bounds": {}},
+            {"lat": 50.1, "lon": 8.3, "bounds": {}},
+        )
+
+    params = get_route_mock.calls.last.request.url.params
+    assert "returnGeometries" not in params
+    assert "returnInstructions" not in params
+    assert params["returnJSON"] == "true"
+
+
+async def test_stop_at_bounds_works_without_geometries(respx_mock: MockRouter):
+    """Segments keep their `path` point, which stop_at_bounds relies on."""
+    segments = [
+        {"length": 1000, "crossTime": 60, "path": {"x": 8.0, "y": 50.0}},
+        {"length": 2000, "crossTime": 120, "path": {"x": 9.0, "y": 51.0}},
+    ]
+    bounds = {"left": 7.9, "right": 8.1, "bottom": 49.9, "top": 50.1}
+    duration, distance = route_calculator.WazeRouteCalculator()._add_up_route(
+        segments, bounds, {}, stop_at_bounds=True
+    )
+    assert (duration, distance) == (2.0, 2.0)
