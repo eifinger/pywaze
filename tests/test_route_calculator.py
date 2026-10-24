@@ -577,15 +577,13 @@ def test_venue_prefix_match(address: str, expected: str | None):
     ),
 )
 async def test_address_to_coords_strips_venue_prefix(
-    address: str, expected_query: str | None, respx_mock: MockRouter
+    address: str, expected_query: str | None, waze: FakeWaze
 ):
     """Send a single autocomplete request using the stripped address."""
-    lookup = respx_mock.get("https://gapi.waze.com/autocomplete/q").respond(
-        200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN
-    )
+    lookup = waze.add(AUTOCOMPLETE_URL, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN)
 
     async with route_calculator.WazeRouteCalculator() as client:
         await client.address_to_coords(address)
 
     assert lookup.call_count == 1
-    assert lookup.calls.last.request.url.params["q"] == (expected_query or address)
+    assert lookup.calls[-1].params["q"] == (expected_query or address)
