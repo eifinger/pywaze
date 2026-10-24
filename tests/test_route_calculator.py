@@ -619,3 +619,63 @@ async def test_stop_at_bounds_works_without_geometries(respx_mock: MockRouter):
         segments, bounds, {}, stop_at_bounds=True
     )
     assert (duration, distance) == (2.0, 2.0)
+
+
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    (
+        (
+            "Costco Wholesale, 1600 Montague Expy, San Jose, CA 95131",
+            "1600 Montague Expy, San Jose, CA 95131",
+        ),
+        (
+            "Milpitas Public Library, 160 N Main St, Milpitas, CA 95035, USA",
+            "160 N Main St, Milpitas, CA 95035, USA",
+        ),
+        (
+            "Tilly's, Great Mall of the Bay Area, 447 Great Mall Dr, Milpitas, CA 95035",
+            "447 Great Mall Dr, Milpitas, CA 95035",
+        ),
+        ("Home, 123 Main St, Milpitas, CA", "123 Main St, Milpitas, CA"),
+        # Nothing to strip.
+        ("1600 Montague Expy, San Jose, CA 95131", None),
+        ("Costco, San Jose", None),
+        ("Googleplex", None),
+        ("Luisenstraße 30 65185 Wiesbaden, Germany", None),
+        ("Kaiserstraße 30, 55116 Mainz, Germany", None),
+        ("10 Downing Street, London SW1A 2AA, UK", None),
+        ("Empire State Building, New York", None),
+        ("50.0033,8.2623", None),
+    ),
+)
+def test_venue_prefix_match(address: str, expected: str | None):
+    """Only a leading venue name before a US-style street address is stripped."""
+    stripped = route_calculator.WazeRouteCalculator.VENUE_PREFIX_MATCH.sub(
+        "", address
+    ).strip()
+    assert stripped == (expected or address)
+
+
+@pytest.mark.parametrize(
+    ("address", "expected_query"),
+    (
+        (
+            "Costco Wholesale, 1600 Montague Expy, San Jose, CA 95131",
+            "1600 Montague Expy, San Jose, CA 95131",
+        ),
+        ("Luisenstraße 30 65185 Wiesbaden, Germany", None),
+    ),
+)
+async def test_address_to_coords_strips_venue_prefix(
+    address: str, expected_query: str | None, respx_mock: MockRouter
+):
+    """Send a single autocomplete request using the stripped address."""
+    lookup = respx_mock.get("https://gapi.waze.com/autocomplete/q").respond(
+        200, json=ADDRESS_TO_COORDS_RESPONSE_WIESBADEN
+    )
+
+    async with route_calculator.WazeRouteCalculator() as client:
+        await client.address_to_coords(address)
+
+    assert lookup.call_count == 1
+    assert lookup.calls.last.request.url.params["q"] == (expected_query or address)
