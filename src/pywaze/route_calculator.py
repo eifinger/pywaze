@@ -259,7 +259,7 @@ class WazeRouteCalculator:
         """Check waze server response."""
         if 200 <= response.status_code < 300:
             try:
-                response_json = response.json()  # type: ignore[no-untyped-call]
+                response_json = response.json()
                 logger.debug("Response is: %s", response_json)
                 if "error" in response_json:
                     raise WRCError(response_json.get("error"))
