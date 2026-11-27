@@ -92,6 +92,7 @@ async def test_live_nondefault_options():
             real_time=False,
             stop_at_bounds=True,
             base_coords=(50.0, 8.2),
+            avoid_highways=True,
         )
         assert routes
         assert 0 < routes[0].duration < 180
