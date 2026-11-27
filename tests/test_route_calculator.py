@@ -518,6 +518,24 @@ async def test_get_routes_does_not_request_geometries_or_instructions(
     assert params["returnJSON"] == "true"
 
 
+@pytest.mark.parametrize(
+    ("avoid_highways", "expected_option"),
+    ((False, "AVOID_PRIMARIES:f"), (True, "AVOID_PRIMARIES:t")),
+)
+async def test_calc_routes_avoid_highways(
+    avoid_highways: bool, expected_option: str, waze: FakeWaze
+):
+    """Avoiding highways maps to Waze's AVOID_PRIMARIES routing option."""
+    get_route_mock = waze.add(ROUTING_URL, json=SEGMENT_ROUTE)
+    async with route_calculator.WazeRouteCalculator() as client:
+        await client.calc_routes(
+            "50.0033,8.2623", "50.0841,8.2478", avoid_highways=avoid_highways
+        )
+
+    options = get_route_mock.calls[-1].params["options"].split(",")
+    assert expected_option in options
+
+
 async def test_stop_at_bounds_works_without_geometries():
     """Segments keep their `path` point, which stop_at_bounds relies on."""
     segments = [

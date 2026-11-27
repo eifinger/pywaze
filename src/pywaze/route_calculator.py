@@ -210,6 +210,7 @@ class WazeRouteCalculator:
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
+        avoid_highways: bool = False,
         alternatives: int = 1,
         time_delta: int = 0,
     ) -> list[dict[str, Any]]:
@@ -221,6 +222,7 @@ class WazeRouteCalculator:
             "AVOID_TRAILS": "t",
             "AVOID_TOLL_ROADS": "t" if avoid_toll_roads else "f",
             "AVOID_FERRIES": "t" if avoid_ferries else "f",
+            "AVOID_PRIMARIES": "t" if avoid_highways else "f",
         }
 
         url_options: dict[str, str | int] = {
@@ -320,6 +322,7 @@ class WazeRouteCalculator:
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
+        avoid_highways: bool = False,
         alternatives: int = 1,
         time_delta: int = 0,
         real_time: bool = True,
@@ -355,6 +358,7 @@ class WazeRouteCalculator:
             avoid_toll_roads=avoid_toll_roads,
             avoid_subscription_roads=avoid_subscription_roads,
             avoid_ferries=avoid_ferries,
+            avoid_highways=avoid_highways,
             alternatives=alternatives,
             time_delta=time_delta,
         )

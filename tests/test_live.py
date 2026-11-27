@@ -88,6 +88,7 @@ async def test_live_nondefault_options():
             avoid_toll_roads=True,
             avoid_subscription_roads=True,
             avoid_ferries=True,
+            avoid_highways=True,
             time_delta=15,
             real_time=False,
             stop_at_bounds=True,
