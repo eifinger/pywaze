@@ -88,11 +88,11 @@ async def test_live_nondefault_options():
             avoid_toll_roads=True,
             avoid_subscription_roads=True,
             avoid_ferries=True,
+            avoid_highways=True,
             time_delta=15,
             real_time=False,
             stop_at_bounds=True,
             base_coords=(50.0, 8.2),
-            avoid_highways=True,
         )
         assert routes
         assert 0 < routes[0].duration < 180

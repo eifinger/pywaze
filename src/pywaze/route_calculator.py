@@ -210,9 +210,9 @@ class WazeRouteCalculator:
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
+        avoid_highways: bool = False,
         alternatives: int = 1,
         time_delta: int = 0,
-        avoid_highways: bool = False,
     ) -> list[dict[str, Any]]:
         """Get route data from waze."""
 
@@ -322,12 +322,12 @@ class WazeRouteCalculator:
         avoid_toll_roads: bool = False,
         avoid_subscription_roads: bool = False,
         avoid_ferries: bool = False,
+        avoid_highways: bool = False,
         alternatives: int = 1,
         time_delta: int = 0,
         real_time: bool = True,
         stop_at_bounds: bool = False,
         base_coords: BaseCoordsInput | None = None,
-        avoid_highways: bool = False,
     ) -> list[CalcRoutesResponse]:
         """Get route info with enhanced calculations like total distance."""
 
@@ -358,9 +358,9 @@ class WazeRouteCalculator:
             avoid_toll_roads=avoid_toll_roads,
             avoid_subscription_roads=avoid_subscription_roads,
             avoid_ferries=avoid_ferries,
+            avoid_highways=avoid_highways,
             alternatives=alternatives,
             time_delta=time_delta,
-            avoid_highways=avoid_highways,
         )
         # Waze appends HOV / passenger-restricted copies of the alternatives, which
         # are not drivable alone. Drop them unless nothing else was returned.
